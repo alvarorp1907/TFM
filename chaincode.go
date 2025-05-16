@@ -1,0 +1,93 @@
+package main
+
+import (
+    "log"
+	"encoding/json"
+	"fmt"
+	"github.com/hyperledger/fabric-contract-api-go/v2/contractapi"
+)
+
+// SmartContract provides functions for managing an Asset
+type CIDContract struct {
+	contractapi.Contract
+}
+
+//Asset structure containing the following fields:
+// 1º FileName of the file stored in IPFS
+// 2º CID of the file
+type CIDRecord struct {
+	FileName string `json:"fileName"`
+	CID      string `json:"cid"`
+}
+
+// InitLedger adds a base set of assets to the ledger
+func (c *CIDContract) InitLedger(ctx contractapi.TransactionContextInterface) error {
+	records := []CIDRecord{
+		{FileName: "test1.txt", CID: "QmABC123"},
+		{FileName: "test2.txt", CID: "QmDEF456"},
+	}
+
+	for _, record := range records {
+		data, err := json.Marshal(record)
+		if err != nil {
+			return err
+		}
+		
+		err = ctx.GetStub().PutState(record.FileName, data)
+		if err != nil {
+			return fmt.Errorf("failed to put to World State %s: %v", record.FileName, err)
+		}
+	}
+	
+	return nil
+}
+
+//function to create a new asset in the World State containing the filename and CID stored in IPFS
+func (c *CIDContract) AddNewFile(ctx contractapi.TransactionContextInterface, fileName string, cid string) error {
+	//exists, err := c.AssetExists(ctx, fileName)
+	//if err != nil {
+		//return err
+	//}
+	//if exists {
+		//return fmt.Errorf("the asset %s already exists", fileName)
+	//}
+	
+	record := CIDRecord{
+		FileName: fileName,
+		CID:      cid,
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	return ctx.GetStub().PutState(fileName, data)
+}
+
+//function to read an existing file stored in the World State
+func (c *CIDContract) GetInfoFile(ctx contractapi.TransactionContextInterface, fileName string) (*CIDRecord, error) {
+	data, err := ctx.GetStub().GetState(fileName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from world state: %v", err)
+	}
+	if data == nil {
+		return nil, fmt.Errorf("the asset %s does not exist",fileName)
+	}
+	
+	var asset CIDRecord
+	err = json.Unmarshal(data, &asset)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &asset, nil
+}
+
+func main() {
+	chaincode, err := contractapi.NewChaincode(new(CIDContract))
+	if err != nil {
+		log.Panicf("Error creating CIDContract chaincode: %v", err)
+	}
+	if err := chaincode.Start(); err != nil {
+		log.Panicf("Error starting asset-transfer-basic chaincode: %v", err.Error())
+	}
+}
