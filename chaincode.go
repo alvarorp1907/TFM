@@ -43,7 +43,7 @@ func (c *CIDContract) InitLedger(ctx contractapi.TransactionContextInterface) er
 }
 
 //function to create a new asset in the World State containing the filename and CID stored in IPFS
-func (c *CIDContract) AddNewFile(ctx contractapi.TransactionContextInterface, fileName string, cid string) error {
+func (c *CIDContract) AddNewAsset(ctx contractapi.TransactionContextInterface, fileName string, cid string) error {
 	//exists, err := c.AssetExists(ctx, fileName)
 	//if err != nil {
 		//return err
@@ -64,7 +64,7 @@ func (c *CIDContract) AddNewFile(ctx contractapi.TransactionContextInterface, fi
 }
 
 //function to read an existing file stored in the World State
-func (c *CIDContract) GetInfoFile(ctx contractapi.TransactionContextInterface, fileName string) (*CIDRecord, error) {
+func (c *CIDContract) GetInfoAsset(ctx contractapi.TransactionContextInterface, fileName string) (*CIDRecord, error) {
 	data, err := ctx.GetStub().GetState(fileName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read from world state: %v", err)
@@ -82,12 +82,63 @@ func (c *CIDContract) GetInfoFile(ctx contractapi.TransactionContextInterface, f
 	return &asset, nil
 }
 
+//function that returns all assets found in world state
+func (c *CIDContract) GetAllAssets(ctx contractapi.TransactionContextInterface) ([]*CIDRecord, error) {
+	// range query with empty string for startKey and endKey does an
+	// open-ended query of all assets in the chaincode namespace.
+	resultsIterator, err := ctx.GetStub().GetStateByRange("", "")
+	if err != nil {
+		return nil, err
+	}
+	defer resultsIterator.Close()
+
+	var assets []*CIDRecord
+	for resultsIterator.HasNext() {
+		queryResponse, err := resultsIterator.Next()
+		if err != nil {
+			return nil, err
+		}
+
+		var asset CIDRecord
+		err = json.Unmarshal(queryResponse.Value, &asset)
+		if err != nil {
+			return nil, err
+		}
+		assets = append(assets, &asset)
+	}
+
+	return assets, nil
+}
+
+//function that returns true when asset with given fileExist exists in world state
+func (c *CIDContract) AssetExists(ctx contractapi.TransactionContextInterface, fileName string) (bool, error) {
+	assetJSON, err := ctx.GetStub().GetState(fileName)
+	if err != nil {
+		return false, fmt.Errorf("failed to read from world state: %v", err)
+	}
+
+	return assetJSON != nil, nil
+}
+
+// function that deletes an given asset from the world state.
+func (c *CIDContract) DeleteAsset(ctx contractapi.TransactionContextInterface, fileName string) error {
+	exists, err := c.AssetExists(ctx, fileName)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("the asset %s does not exist", fileName)
+	}
+
+	return ctx.GetStub().DelState(fileName)
+}
+
 func main() {
 	chaincode, err := contractapi.NewChaincode(new(CIDContract))
 	if err != nil {
 		log.Panicf("Error creating CIDContract chaincode: %v", err)
 	}
 	if err := chaincode.Start(); err != nil {
-		log.Panicf("Error starting asset-transfer-basic chaincode: %v", err.Error())
+		log.Panicf("Error starting the chaincode: %v", err.Error())
 	}
 }
