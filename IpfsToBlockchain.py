@@ -186,46 +186,7 @@ def uploadFileToHyperledgerFabric(fileName,cid):
 
 
 
-#################### main ####################    
-
-#Stage 1 -> upload file to IPFS through local API server
-
-#add fileIPFS to IPFS
-# fileIPFSJson = {'fileIPFS': open(fileIPFS, 'rb')}
-# response = requests.post('http://127.0.0.1:5001/api/v0/add', files=fileIPFSJson)
-
-#checking respose status from local API server
-# if response.status_code == 200:
-    # payload = response.json()
-    # fileIPFSCID = payload['Hash']
-    # print(f"File named as {fileIPFS} successfully uploaded to IPFS.")
-    # print(f"{fileIPFS} CID: {fileIPFSCID}")
-    # print(f"Public URL: https://ipfs.io/ipfs/{fileIPFSCID}")
-# else:
-    # print(f"File name as {fileIPFS} cannot be uploaded to IPFS")
-    # print(f"Error code {response.status_code} received from local API server")
-    # exit()
-
-#stage 2 -> invoke the chaincode installed in the hyperledger Fabric network to store the file's CID
-    
-#changing dir to hyperledger test network directory
-#os.chdir(DIR_HYPERLEDGER_NET)
-    
-#adding new CID to hyperledger Fabric
-# res = subprocess.run(HyperledgerCmd["AddNewAsset"].format(fileIPFS,fileIPFSCID), capture_output=True, text=True, shell=True)
-# cleanRes = res.stderr.strip(' \n\r')
-# transactionStatusCode = cleanRes[-3:]
-# time.sleep(2)
-#res2 = subprocess.run(HyperledgerCmd["GetAllAssets"], capture_output=True, text=True, shell=True)
-# if (transactionStatusCode == "200"):
-    # print(f"CID successfully stored in Hyperledger Fabric Blockchain")
-# else:
-    # print(f"Error invoking the chaincode in Hyperledger Fabric Blockchain: {res}")
-    
-#getting stored CID for target file in Hyperledger Fabric
-# res = subprocess.run(HyperledgerCmd["GetInfoAsset"].format(fileIPFS), capture_output=True, text=True, shell=True)
-# datos = json.loads(res.stdout).strip()
-# print(datos["cid"])
+#################### main ####################
 
 #launching background process
 
