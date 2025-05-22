@@ -46,17 +46,18 @@ HyperledgerEnvVar = {"FABRIC_CFG_PATH" : f"{DIR_HYPERLEDGER_FABRIC_SAMPLES}/conf
 
 #################### functions ####################
 
-"""
-Def:
-    Function to upload a file to IPFS.
-Args:
-    targetFile : full path of the file.
-Return:
-    Tuple containing the request status and IPFS CID obtained.
-Note:
-    None
-"""
+
 def uploadFileToIPFS(file):
+    """
+    Def:
+        Function to upload a file to IPFS.
+    Args:
+        targetFile : full path of the file.
+    Return:
+        Tuple containing the request status and IPFS CID obtained.
+    Note:
+        None
+    """
     retStatus = True
     fileIPFSCID = CID_CODE_ERROR
     fileIPFSJson = {'fileIPFS': open(file, 'rb')}
@@ -77,18 +78,20 @@ def uploadFileToIPFS(file):
       
     return retStatus,fileIPFSCID
 
-"""
-Def:
-    Function to monitor if a new file has been added in the directory where target
-    files must be stored
-Args:
-    Void 
-Return:
-    Void   
-Note:
-    This function is executed in a background process
-"""
+
+
 def filesMonitoring():
+    """
+    Def:
+        Function to monitor if a new file has been added in the directory where target
+        files must be stored
+    Args:
+        Void 
+    Return:
+        Void   
+    Note:
+        This function is executed in a background process
+    """
     isFirstIteration = True
     lastFileModified = ""#path of the last file modified
     lastTimeStamp = 0 #timeStamp of the last file modified
@@ -133,18 +136,18 @@ def filesMonitoring():
 
 
 
-"""
-Def:
-    Function to check if the file specified at first parameter
-    is stored in Hyperledger Fabric or not.
-Args:
-    targetFile : full path of the target file
-Return:
-    True if found otherwise False   
-Note:
-    None
-"""
 def isIPFfileStoredInHyperledger(targetFile,cidToCheck):
+    """
+    Def:
+        Function to check if the file specified at first parameter
+        is stored in Hyperledger Fabric or not.
+    Args:
+        targetFile : full path of the target file
+    Return:
+        True if found otherwise False   
+    Note:
+        None
+    """
     ret = False
     
     res = subprocess.run(HyperledgerCmd["GetInfoAsset"].format(targetFile), capture_output=True, text=True, shell=True)
@@ -162,18 +165,19 @@ def isIPFfileStoredInHyperledger(targetFile,cidToCheck):
     return ret
 
 
-"""
-Def:
-    Function to upload a file to Hyperledger Fabric Blockchain.
-Args:
-    targetFile : full path of the file.
-    cid : IPFS CID
-Return:
-    True if operation is successfully done otherwise False.
-Note:
-    None
-"""
+
 def uploadFileToHyperledgerFabric(fileName,cid):
+    """
+    Def:
+        Function to upload a file to Hyperledger Fabric Blockchain.
+    Args:
+        targetFile : full path of the file.
+        cid : IPFS CID
+    Return:
+        True if operation is successfully done otherwise False.
+    Note:
+        None
+    """
     res = subprocess.run(HyperledgerCmd["AddNewAsset"].format(fileName,cid), capture_output=True, text=True, shell=True)
     cleanRes = res.stderr.strip(' \n\r')
     transactionStatusCode = cleanRes[-3:]
@@ -185,14 +189,7 @@ def uploadFileToHyperledgerFabric(fileName,cid):
 
 
 
-
 #################### main ####################
 
-#launching background process
-
-backgroundProcess = Process(target=filesMonitoring)
-backgroundProcess.start()
-
-
-
-
+if __name__ == "__main__":
+    filesMonitoring()
