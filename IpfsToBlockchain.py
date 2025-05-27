@@ -7,6 +7,7 @@ from multiprocessing import Process
 from pathlib import Path
 import json
 from daemonClass import daemon
+import datetime
 
 #################### constants ####################
 
@@ -34,7 +35,7 @@ CID_CODE_ERROR = "-1"
 #################### variables and structures ####################
 
 HyperledgerCmd = {"InitLedger"   : INVOKE_CN_BASE_CMD + " \'{\"Args\":[\"InitLedger\"]}\'",
-                  "AddNewAsset"  : INVOKE_CN_BASE_CMD + " \'{{\"Args\":[\"AddNewAsset\"," + "\"{0}\",\"{1}\"]" + "}}\'",
+                  "AddNewAsset"  : INVOKE_CN_BASE_CMD + " \'{{\"Args\":[\"AddNewAsset\"," + "\"{0}\",\"{1}\",\"{2}\"]" + "}}\'",
                   "GetAllAssets" : QUERY_CN_BASE_CMD + " \'{\"Args\":[\"GetAllAssets\"]}\'",
                   "GetInfoAsset" : QUERY_CN_BASE_CMD + " \'{{\"Args\":[\"GetInfoAsset\"," + "\"{0}\"]" + "}}\'"}
                   
@@ -121,19 +122,24 @@ class MonitoringForIpfsHyperledger(daemon):
     
     
     
-    def uploadFileToHyperledgerFabric(self,fileName,cid):
+    def uploadFileToHyperledgerFabric(self,fileName,cid,timestamp):
         """
         Def:
             Function to upload a file to Hyperledger Fabric Blockchain.
         Args:
             targetFile : full path of the file.
             cid : IPFS CID
+            timeStamp : Unix time
         Return:
             True if operation is successfully done otherwise False.
         Note:
             None
         """
-        res = subprocess.run(HyperledgerCmd["AddNewAsset"].format(fileName,cid), capture_output=True, text=True, shell=True)
+        #formatting unix time
+        timestamp = datetime.datetime.fromtimestamp(timestamp)
+        fmtTimestamp = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        #invoking chaincode
+        res = subprocess.run(HyperledgerCmd["AddNewAsset"].format(fileName,cid,fmtTimestamp), capture_output=True, text=True, shell=True)
         cleanRes = res.stderr.strip(' \n\r')
         transactionStatusCode = cleanRes[-3:]
         
@@ -191,7 +197,7 @@ class MonitoringForIpfsHyperledger(daemon):
                                 if isCidStored == False:
                                     #upload IPFS file to Hyperledger Fabric
                                     print(f"Uploading info from file '{fullPathFile}' to Hyperledger Fabric!")
-                                    self.uploadFileToHyperledgerFabric(fullPathFile,cid)
+                                    self.uploadFileToHyperledgerFabric(fullPathFile,cid,lastTimeStamp)
                                 else:
                                     print(f"CID '{cid} has been previously stored in Hyperledger'")
                             

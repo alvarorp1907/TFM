@@ -18,13 +18,14 @@ type CIDContract struct {
 type CIDRecord struct {
 	FileName string `json:"fileName"`
 	CID      string `json:"cid"`
+	Timestamp string `json:"timestamp"`
 }
 
 // InitLedger adds a base set of assets to the ledger
 func (c *CIDContract) InitLedger(ctx contractapi.TransactionContextInterface) error {
 	records := []CIDRecord{
-		{FileName: "test1.txt", CID: "QmABC123"},
-		{FileName: "test2.txt", CID: "QmDEF456"},
+		{FileName: "test1.txt", CID: "QmABC123", Timestamp : "2006-01-02 15:04:05"},
+		{FileName: "test2.txt", CID: "QmDEF456", Timestamp : "2006-01-02 15:04:05"},
 	}
 
 	for _, record := range records {
@@ -43,7 +44,7 @@ func (c *CIDContract) InitLedger(ctx contractapi.TransactionContextInterface) er
 }
 
 //function to create a new asset in the World State containing the filename and CID stored in IPFS
-func (c *CIDContract) AddNewAsset(ctx contractapi.TransactionContextInterface, fileName string, cid string) error {
+func (c *CIDContract) AddNewAsset(ctx contractapi.TransactionContextInterface, fileName string, cid string, timestamp string) error {
 	//exists, err := c.AssetExists(ctx, fileName)
 	//if err != nil {
 		//return err
@@ -55,7 +56,9 @@ func (c *CIDContract) AddNewAsset(ctx contractapi.TransactionContextInterface, f
 	record := CIDRecord{
 		FileName: fileName,
 		CID:      cid,
+		Timestamp: timestamp,
 	}
+
 	data, err := json.Marshal(record)
 	if err != nil {
 		return err
