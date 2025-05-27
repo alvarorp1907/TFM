@@ -8,6 +8,7 @@ from pathlib import Path
 import json
 from daemonClass import daemon
 import datetime
+import socket
 
 #################### constants ####################
 
@@ -31,6 +32,10 @@ INVOKE_CN_BASE_CMD = r"peer chaincode invoke -o localhost:7050 --ordererTLSHostn
 QUERY_CN_BASE_CMD = f"peer chaincode query -C {CHAINCODE_CHANNEL} -n {CHAINCODE_NAME} -c"
 
 CID_CODE_ERROR = "-1"
+
+SERVER_MAX_NUMBER_CONNECTIONS = 5
+SERVER_PORT = 4000
+SERVER_HOST = "0.0.0.0"
 
 #################### variables and structures ####################
 
@@ -150,6 +155,46 @@ class MonitoringForIpfsHyperledger(daemon):
     
     
     
+    def waitUntilGatewayIsConnected(self):
+      """
+      Function that waits until a TCP connection is established with the target gateway.
+      
+      Args:
+          None.
+          
+      Return:
+          None.
+          
+      Note:
+          This function reject all clients except the targer gateway device. 
+      """
+      gatewayIsConnected = False
+      gatewayIp = "127.0.0.1" #ToDo: fetch this info in Hyperledger fabric
+      
+      #creating a TCP socket
+      server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      #setting options
+      server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+      #binding IP with port
+      server.bind((SERVER_HOST, SERVER_PORT))
+      #waiting for connection
+      server.listen(SERVER_MAX_NUMBER_CONNECTIONS)
+      
+      while(not gatewayIsConnected):
+        #program is blocked here until a connection is established
+        clientSocket, clientAddress = server.accept()
+        clientIp , clientPort = clientAddress
+        #checking client
+        if clientIp == gatewayIp:
+          gatewayIsConnected = True
+        else:
+          print("No legitime connection, closing connection...")
+          clientSocket.close()
+      print("Connection established with gateway!")
+          
+    
+    
+    
     def filesMonitoring(self):
         """
         Def:
@@ -170,6 +215,8 @@ class MonitoringForIpfsHyperledger(daemon):
         #set environment variables before executing any operation in Hyperledger
         for environVarName, environVarValue in HyperledgerEnvVar.items():
             os.environ[environVarName] = environVarValue
+            
+        self.waitUntilGatewayIsConnected()
         
         while True:
             #analyzing target file where IPFS file are being stored
