@@ -34,7 +34,7 @@ func (c *CIDContract) InitLedger(ctx contractapi.TransactionContextInterface) er
 			return err
 		}
 		
-		err = ctx.GetStub().PutState(record.FileName, data)
+		err = ctx.GetStub().PutState(record.CID, data)
 		if err != nil {
 			return fmt.Errorf("failed to put to World State %s: %v", record.FileName, err)
 		}
@@ -63,17 +63,17 @@ func (c *CIDContract) AddNewAsset(ctx contractapi.TransactionContextInterface, f
 	if err != nil {
 		return err
 	}
-	return ctx.GetStub().PutState(fileName, data)
+	return ctx.GetStub().PutState(cid, data)
 }
 
 //function to read an existing file stored in the World State
-func (c *CIDContract) GetInfoAsset(ctx contractapi.TransactionContextInterface, fileName string) (*CIDRecord, error) {
-	data, err := ctx.GetStub().GetState(fileName)
+func (c *CIDContract) GetInfoAsset(ctx contractapi.TransactionContextInterface, cid string) (*CIDRecord, error) {
+	data, err := ctx.GetStub().GetState(cid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read from world state: %v", err)
 	}
 	if data == nil {
-		return nil, fmt.Errorf("the asset %s does not exist",fileName)
+		return nil, fmt.Errorf("the asset %s does not exist",cid)
 	}
 	
 	var asset CIDRecord
@@ -114,8 +114,8 @@ func (c *CIDContract) GetAllAssets(ctx contractapi.TransactionContextInterface) 
 }
 
 //function that returns true when asset with given fileExist exists in world state
-func (c *CIDContract) AssetExists(ctx contractapi.TransactionContextInterface, fileName string) (bool, error) {
-	assetJSON, err := ctx.GetStub().GetState(fileName)
+func (c *CIDContract) AssetExists(ctx contractapi.TransactionContextInterface, cid string) (bool, error) {
+	assetJSON, err := ctx.GetStub().GetState(cid)
 	if err != nil {
 		return false, fmt.Errorf("failed to read from world state: %v", err)
 	}
@@ -124,16 +124,16 @@ func (c *CIDContract) AssetExists(ctx contractapi.TransactionContextInterface, f
 }
 
 // function that deletes an given asset from the world state.
-func (c *CIDContract) DeleteAsset(ctx contractapi.TransactionContextInterface, fileName string) error {
-	exists, err := c.AssetExists(ctx, fileName)
+func (c *CIDContract) DeleteAsset(ctx contractapi.TransactionContextInterface, cid string) error {
+	exists, err := c.AssetExists(ctx, cid)
 	if err != nil {
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("the asset %s does not exist", fileName)
+		return fmt.Errorf("the asset %s does not exist", cid)
 	}
 
-	return ctx.GetStub().DelState(fileName)
+	return ctx.GetStub().DelState(cid)
 }
 
 func main() {
