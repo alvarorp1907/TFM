@@ -12,6 +12,7 @@ import socket
 
 #################### constants ####################
 
+#relevant directories
 DIR_FILES = "/home/alvarorp19/archivesTestingIPFS"
 DIR_HYPERLEDGER_NET = "/home/alvarorp19/fabric-samples/test-network"
 DIR_HYPERLEDGER_FABRIC_SAMPLES = "/home/alvarorp19/fabric-samples"
@@ -21,9 +22,11 @@ DIR_CERT_CA_ORG2 = f"{DIR_HYPERLEDGER_NET}/organizations/peerOrganizations/org2.
 DIR_CERT_CA_ORDERER =f"{DIR_HYPERLEDGER_NET}/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem"
 DIR_MSP_PEER_ORG1_CONF = f"{DIR_HYPERLEDGER_NET}/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp"
 
+#Hyperledger Fabric information
 CHAINCODE_NAME = "chaincode"
 CHAINCODE_CHANNEL = "mychannel"
 
+#Hyperledger Fabric commands
 INVOKE_CN_BASE_CMD = r"peer chaincode invoke -o localhost:7050 --ordererTLSHostnameOverride orderer.example.com " \
                      f"--tls --cafile {DIR_CERT_CA_ORDERER} -C {CHAINCODE_CHANNEL} -n {CHAINCODE_NAME} " \
                      f"--peerAddresses localhost:7051 --tlsRootCertFiles {DIR_CERT_CA_ORG1} " \
@@ -33,9 +36,11 @@ QUERY_CN_BASE_CMD = f"peer chaincode query -C {CHAINCODE_CHANNEL} -n {CHAINCODE_
 
 CID_CODE_ERROR = "-1"
 
+#TCP server information
 SERVER_MAX_NUMBER_CONNECTIONS = 5
 SERVER_PORT = 4000
 SERVER_HOST = "0.0.0.0"
+RX_BUFFER_LEN = 1024
 
 #################### variables and structures ####################
 
@@ -56,12 +61,18 @@ HyperledgerEnvVar = {"FABRIC_CFG_PATH" : f"{DIR_HYPERLEDGER_FABRIC_SAMPLES}/conf
 
 
 class MonitoringForIpfsHyperledger(daemon):
+    
+    #gateway events
+    GATEWAY_STORE_CID_EVENT = "STORE_CID"
 
     def __init__(self,pidFile,debugLevel):
         """
         Class constructor
         """
-        super().__init__(pidFile,debugLevel)
+        super().__init__(pidFile,debugLevel) #constructor
+        self.server = None #TCP server socket 
+        self.gateway = None #TCP gateway socket
+        #toDo : implement a table with gateway commands
         
         
     
@@ -166,32 +177,63 @@ class MonitoringForIpfsHyperledger(daemon):
           None.
           
       Note:
-          This function reject all clients except the targer gateway device. 
+          This function reject all clients except the target gateway device. 
       """
       gatewayIsConnected = False
       gatewayIp = "127.0.0.1" #ToDo: fetch this info in Hyperledger fabric
       
       #creating a TCP socket
-      server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       #setting options
-      server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+      self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
       #binding IP with port
-      server.bind((SERVER_HOST, SERVER_PORT))
+      self.server.bind((SERVER_HOST, SERVER_PORT))
       #waiting for connection
-      server.listen(SERVER_MAX_NUMBER_CONNECTIONS)
+      self.server.listen(SERVER_MAX_NUMBER_CONNECTIONS)
+      
+      print("Waiting until gateway is connected...")
       
       while(not gatewayIsConnected):
         #program is blocked here until a connection is established
-        clientSocket, clientAddress = server.accept()
+        clientSocket, clientAddress = self.server.accept()
         clientIp , clientPort = clientAddress
         #checking client
         if clientIp == gatewayIp:
           gatewayIsConnected = True
+          self.gateway = clientSocket
         else:
           print("No legitime connection, closing connection...")
           clientSocket.close()
+      #once the target connection has been established,
+      #can stop listening server port
       print("Connection established with gateway!")
+      self.server.close()
+
+
+
+    def isSocketClosed(self):
+      """
+      This function detects whether the gateway socket is closed or not.
+      
+      Args:
+          None
           
+      Return:
+          Bool
+      """
+      try:
+          # this will try to read bytes without blocking and also without removing them from buffer (peek only)
+          data = self.gateway.recv(16, socket.MSG_DONTWAIT | socket.MSG_PEEK)
+          if len(data) == 0:
+              return True
+      except BlockingIOError:
+          return False  # socket is open and reading from it would block
+      except ConnectionResetError:
+          return True  # socket was closed for some other reason
+      except Exception as e:
+          print("unexpected exception when checking if a socket is closed")
+          return False
+      return False          
     
     
     
@@ -207,10 +249,10 @@ class MonitoringForIpfsHyperledger(daemon):
         Note:
             This function is executed in a background process
         """
-        isFirstIteration = True
-        lastFileModified = ""#path of the last file modified
-        lastTimeStamp = 0 #timeStamp of the last file modified
-        targetDir = Path(DIR_FILES)
+        #isFirstIteration = True
+        #lastFileModified = ""#path of the last file modified
+        #lastTimeStamp = 0 #timeStamp of the last file modified
+        #targetDir = Path(DIR_FILES)
         
         #set environment variables before executing any operation in Hyperledger
         for environVarName, environVarValue in HyperledgerEnvVar.items():
@@ -219,37 +261,63 @@ class MonitoringForIpfsHyperledger(daemon):
         self.waitUntilGatewayIsConnected()
         
         while True:
-            #analyzing target file where IPFS file are being stored
-            #print(f"Last modification in IPFS dir -> {lastTimeStamp}")
             
-            for file in targetDir.iterdir():
-                if file.is_file():
-                    currTimestamp = file.stat().st_mtime
-                    #print(f"{file.name} → última modificación: {currTimestamp}")
-                    if lastTimeStamp < currTimestamp:
-                        #updating last modified file info
-                        lastTimeStamp = currTimestamp
-                        lastFileModified = file.name
-                        fullPathFile = f"{DIR_FILES}/{lastFileModified}"
-                        #if is the first iteration we dont do any operation
-                        #in IPFS and Hyperledger
-                        if isFirstIteration == False:
-                            print(f"File {lastFileModified} has been modified in target directory : {DIR_FILES}")
-                            #uploading last modifications to IPFS
-                            status,cid = self.uploadFileToIPFS(fullPathFile)
+            #wait until some gateway event arrives
+            rawData = self.gateway.recv(RX_BUFFER_LEN)
+            recvData = rawData.decode()
+            
+            #verify if gateway connection still open
+            isConnectionClosed = self.isSocketClosed()
+            
+            if isConnectionClosed:
+                self.waitUntilGatewayIsConnected()
+            else:
+              #processing received data from gateway
+              print(f"RECV -> {recvData}")
+              
+              match recvData:
+                  case self.GATEWAY_STORE_CID_EVENT:
+                      print("store CID")
+                      #checking if we need to summit modifications to IPFS and blockchain
+                      # isCidStored = self.isIPFfileStoredInHyperledger(fullPathFile,cid)
+                      # if isCidStored == False:
+                        # #upload IPFS file to Hyperledger Fabric
+                        # print(f"Uploading info from file '{fullPathFile}' to Hyperledger Fabric!")
+                        # self.uploadFileToHyperledgerFabric(fullPathFile,cid,lastTimeStamp)
+                      # else:
+                        # print(f"CID '{cid} has been previously stored in Hyperledger'")
+                  case _:
+                      print("Ignoring received data...")
+                    
+            #ToDo: send a response message to the gateway
+            # for file in targetDir.iterdir():
+                # if file.is_file():
+                    # currTimestamp = file.stat().st_mtime
+                    # #print(f"{file.name} → última modificación: {currTimestamp}")
+                    # if lastTimeStamp < currTimestamp:
+                        # #updating last modified file info
+                        # lastTimeStamp = currTimestamp
+                        # lastFileModified = file.name
+                        # fullPathFile = f"{DIR_FILES}/{lastFileModified}"
+                        # #if is the first iteration we dont do any operation
+                        # #in IPFS and Hyperledger
+                        # if isFirstIteration == False:
+                            # print(f"File {lastFileModified} has been modified in target directory : {DIR_FILES}")
+                            # #uploading last modifications to IPFS
+                            # status,cid = self.uploadFileToIPFS(fullPathFile)
                             
-                            if status:
-                                #checking if we need to summit modifications to IPFS and blockchain
-                                isCidStored = self.isIPFfileStoredInHyperledger(fullPathFile,cid)
-                                if isCidStored == False:
-                                    #upload IPFS file to Hyperledger Fabric
-                                    print(f"Uploading info from file '{fullPathFile}' to Hyperledger Fabric!")
-                                    self.uploadFileToHyperledgerFabric(fullPathFile,cid,lastTimeStamp)
-                                else:
-                                    print(f"CID '{cid} has been previously stored in Hyperledger'")
+                            # if status:
+                                # #checking if we need to summit modifications to IPFS and blockchain
+                                # isCidStored = self.isIPFfileStoredInHyperledger(fullPathFile,cid)
+                                # if isCidStored == False:
+                                    # #upload IPFS file to Hyperledger Fabric
+                                    # print(f"Uploading info from file '{fullPathFile}' to Hyperledger Fabric!")
+                                    # self.uploadFileToHyperledgerFabric(fullPathFile,cid,lastTimeStamp)
+                                # else:
+                                    # print(f"CID '{cid} has been previously stored in Hyperledger'")
                             
-            isFirstIteration = False           
-            time.sleep(5)
+            # isFirstIteration = False           
+            # time.sleep(5)
     
     
     
