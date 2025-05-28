@@ -318,7 +318,7 @@ class MonitoringForIpfsHyperledger(daemon):
                         print(cmdParamsTuple)
                         ptrFunction = value[1]
                         ptrFunction(cmdParamsTuple)
-                        break
+                      break
     
     
     
