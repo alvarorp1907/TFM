@@ -6,7 +6,7 @@ import signal
 IP_SERVIDOR = '127.0.0.1'  #IP server
 PUERTO_SERVIDOR = 4000
 
-GATEWAY_STORE_CID_EVENT = b"STORE_CID"
+GATEWAY_STORE_CID_EVENT = b"STORE_CID HASJASIAJAS pruebaDummy1"
 
 # Crear socket TCP
 cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -38,4 +38,5 @@ except Exception as e:
 while(True):
     time.sleep(5)
     cliente.sendall(GATEWAY_STORE_CID_EVENT)
+    break
 print("Fin del script!!")

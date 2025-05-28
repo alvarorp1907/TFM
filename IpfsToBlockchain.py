@@ -9,6 +9,7 @@ import json
 from daemonClass import daemon
 import datetime
 import socket
+import re
 
 #################### constants ####################
 
@@ -70,9 +71,13 @@ class MonitoringForIpfsHyperledger(daemon):
         Class constructor
         """
         super().__init__(pidFile,debugLevel) #constructor
+        
         self.server = None #TCP server socket 
         self.gateway = None #TCP gateway socket
-        #toDo : implement a table with gateway commands
+        
+        #getaway event dictionary:  
+        #key = command name | 1st value: command pattern , 2nd value : associated function pointer  
+        self.gatewayEventDict = {self.GATEWAY_STORE_CID_EVENT : [fr"{self.GATEWAY_STORE_CID_EVENT} ([a-zA-Z0-9_]+) ([a-zA-Z0-9_]+)", self.uploadCIDtoHyperledger]}
         
         
     
@@ -109,7 +114,7 @@ class MonitoringForIpfsHyperledger(daemon):
     
     
     
-    def isIPFfileStoredInHyperledger(self,targetFile,cidToCheck):
+    def isIPFfileStoredInHyperledger(self,cidToCheck):
         """
         Def:
             Function to check if the file specified at first parameter
@@ -123,7 +128,7 @@ class MonitoringForIpfsHyperledger(daemon):
         """
         ret = False
         
-        res = subprocess.run(HyperledgerCmd["GetInfoAsset"].format(targetFile), capture_output=True, text=True, shell=True)
+        res = subprocess.run(HyperledgerCmd["GetInfoAsset"].format(cidToCheck), capture_output=True, text=True, shell=True)
         stdout = res.stdout
         
         if stdout != "":
@@ -234,6 +239,32 @@ class MonitoringForIpfsHyperledger(daemon):
           print("unexpected exception when checking if a socket is closed")
           return False
       return False          
+   
+
+
+    def uploadCIDtoHyperledger(self,cmdArgs):
+        """
+        Upload file to Hyperledger Fabric.
+        
+        Args:
+            cid : IPFS CID to upload.
+            filename : filename
+            
+        Return:
+            None
+        """
+        cid = cmdArgs[0]
+        filename = cmdArgs[1]
+        unixTime = time.time()
+        
+        #checking if we need to summit modifications to IPFS and blockchain
+        isCidStored = self.isIPFfileStoredInHyperledger(cid)
+        if isCidStored == False:
+            #upload IPFS file to Hyperledger Fabric
+            print(f"Uploading info from file '{filename}' to Hyperledger Fabric!")
+            self.uploadFileToHyperledgerFabric(filename,cid,unixTime)
+        else:
+            print(f"CID '{cid} has been previously stored in Hyperledger'")
     
     
     
@@ -269,55 +300,25 @@ class MonitoringForIpfsHyperledger(daemon):
             #verify if gateway connection still open
             isConnectionClosed = self.isSocketClosed()
             
-            if isConnectionClosed:
+            if isConnectionClosed:#closed
                 self.waitUntilGatewayIsConnected()
-            else:
+            else:#open
               #processing received data from gateway
               print(f"RECV -> {recvData}")
+              cmdNameRcv = recvData.split()[0]
+              cmdParamsTuple = tuple()
               
-              match recvData:
-                  case self.GATEWAY_STORE_CID_EVENT:
-                      print("store CID")
-                      #checking if we need to summit modifications to IPFS and blockchain
-                      # isCidStored = self.isIPFfileStoredInHyperledger(fullPathFile,cid)
-                      # if isCidStored == False:
-                        # #upload IPFS file to Hyperledger Fabric
-                        # print(f"Uploading info from file '{fullPathFile}' to Hyperledger Fabric!")
-                        # self.uploadFileToHyperledgerFabric(fullPathFile,cid,lastTimeStamp)
-                      # else:
-                        # print(f"CID '{cid} has been previously stored in Hyperledger'")
-                  case _:
-                      print("Ignoring received data...")
-                    
-            #ToDo: send a response message to the gateway
-            # for file in targetDir.iterdir():
-                # if file.is_file():
-                    # currTimestamp = file.stat().st_mtime
-                    # #print(f"{file.name} → última modificación: {currTimestamp}")
-                    # if lastTimeStamp < currTimestamp:
-                        # #updating last modified file info
-                        # lastTimeStamp = currTimestamp
-                        # lastFileModified = file.name
-                        # fullPathFile = f"{DIR_FILES}/{lastFileModified}"
-                        # #if is the first iteration we dont do any operation
-                        # #in IPFS and Hyperledger
-                        # if isFirstIteration == False:
-                            # print(f"File {lastFileModified} has been modified in target directory : {DIR_FILES}")
-                            # #uploading last modifications to IPFS
-                            # status,cid = self.uploadFileToIPFS(fullPathFile)
-                            
-                            # if status:
-                                # #checking if we need to summit modifications to IPFS and blockchain
-                                # isCidStored = self.isIPFfileStoredInHyperledger(fullPathFile,cid)
-                                # if isCidStored == False:
-                                    # #upload IPFS file to Hyperledger Fabric
-                                    # print(f"Uploading info from file '{fullPathFile}' to Hyperledger Fabric!")
-                                    # self.uploadFileToHyperledgerFabric(fullPathFile,cid,lastTimeStamp)
-                                # else:
-                                    # print(f"CID '{cid} has been previously stored in Hyperledger'")
-                            
-            # isFirstIteration = False           
-            # time.sleep(5)
+              for cmdName, value in self.gatewayEventDict.items():
+                  if cmdNameRcv == cmdName:
+                      #check received msg structure
+                      pattern = value[0]
+                      match = re.search(pattern,recvData)
+                      if match:
+                        cmdParamsTuple = match.groups()
+                        print(cmdParamsTuple)
+                        ptrFunction = value[1]
+                        ptrFunction(cmdParamsTuple)
+                        break
     
     
     
