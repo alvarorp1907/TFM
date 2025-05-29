@@ -7,25 +7,48 @@ import (
 	"github.com/hyperledger/fabric-contract-api-go/v2/contractapi"
 )
 
+//constants
+const FILE_ASSET_TYPE = "fileAsset"
+const DEVICE_CONFIG_ASSET_TYPE = "deviceConfigAsset"
+
 // SmartContract provides functions for managing an Asset
 type CIDContract struct {
 	contractapi.Contract
 }
 
 //Asset structure containing the following fields:
-// 1º FileName of the file stored in IPFS
-// 2º CID of the file
+//AssetType
+//FileName of the file stored in IPFS
+//CID of the file
+//timestamp
 type CIDRecord struct {
+
+	AssetType string `json:"AssetType"`
 	FileName string `json:"fileName"`
 	CID      string `json:"cid"`
 	Timestamp string `json:"timestamp"`
 }
 
+//Asset structure containing the following fields:
+//name: name of the device
+//AssetType
+//IP : IP address of the device
+//MAC : MAC address of the device
+//description : description of the device
+type deviceConfig struct {
+
+	AssetType string `json:"AssetType"`
+	Name string `json:"name"`
+	IP      string `json:"ip"`
+	MAC string `json:"mac"`
+	Description string `json:"description"`
+
+}
+
 // InitLedger adds a base set of assets to the ledger
 func (c *CIDContract) InitLedger(ctx contractapi.TransactionContextInterface) error {
-	records := []CIDRecord{
-		{FileName: "test1.txt", CID: "QmABC123", Timestamp : "2006-01-02 15:04:05"},
-		{FileName: "test2.txt", CID: "QmDEF456", Timestamp : "2006-01-02 15:04:05"},
+	records := []deviceConfig{
+		{AssetType: DEVICE_CONFIG_ASSET_TYPE, Name: "Gateway", IP: "127.0.0.1", MAC : "00:1A:2B:3C:4D:5E", Description : "Gateway of the network responsible for aggregating all data emitted by waspmotes and storing it in Hyperledger Fabric and IPFS"},
 	}
 
 	for _, record := range records {
@@ -34,9 +57,9 @@ func (c *CIDContract) InitLedger(ctx contractapi.TransactionContextInterface) er
 			return err
 		}
 		
-		err = ctx.GetStub().PutState(record.CID, data)
+		err = ctx.GetStub().PutState(record.Name, data)
 		if err != nil {
-			return fmt.Errorf("failed to put to World State %s: %v", record.FileName, err)
+			return fmt.Errorf("failed to put to World State %s: %v", record.Name, err)
 		}
 	}
 	
@@ -54,6 +77,7 @@ func (c *CIDContract) AddNewAsset(ctx contractapi.TransactionContextInterface, f
 	//}
 	
 	record := CIDRecord{
+		AssetType: FILE_ASSET_TYPE,
 		FileName: fileName,
 		CID:      cid,
 		Timestamp: timestamp,
@@ -86,7 +110,7 @@ func (c *CIDContract) GetInfoAsset(ctx contractapi.TransactionContextInterface, 
 }
 
 //function that returns all assets found in world state
-func (c *CIDContract) GetAllAssets(ctx contractapi.TransactionContextInterface) ([]*CIDRecord, error) {
+func (c *CIDContract) GetAllAssets(ctx contractapi.TransactionContextInterface) ([]map[string]interface{}, error) {
 	// range query with empty string for startKey and endKey does an
 	// open-ended query of all assets in the chaincode namespace.
 	resultsIterator, err := ctx.GetStub().GetStateByRange("", "")
@@ -95,19 +119,22 @@ func (c *CIDContract) GetAllAssets(ctx contractapi.TransactionContextInterface) 
 	}
 	defer resultsIterator.Close()
 
-	var assets []*CIDRecord
+	var assets []map[string]interface{}
+
 	for resultsIterator.HasNext() {
+		var asset map[string]interface{}
+		
 		queryResponse, err := resultsIterator.Next()
 		if err != nil {
 			return nil, err
 		}
 
-		var asset CIDRecord
 		err = json.Unmarshal(queryResponse.Value, &asset)
 		if err != nil {
 			return nil, err
 		}
-		assets = append(assets, &asset)
+
+		assets = append(assets, asset)
 	}
 
 	return assets, nil
