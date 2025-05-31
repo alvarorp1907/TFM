@@ -3,7 +3,7 @@ import time
 import signal
 
 # Configuración
-IP_SERVIDOR = '127.0.0.1'  #IP server
+IP_SERVIDOR = '192.168.1.34'  #IP server
 PUERTO_SERVIDOR = 4000
 
 GATEWAY_STORE_CID_EVENT = b"STORE_CID HASJASIAJAS pruebaDummy1"

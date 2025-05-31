@@ -48,7 +48,7 @@ type deviceConfig struct {
 // InitLedger adds a base set of assets to the ledger
 func (c *CIDContract) InitLedger(ctx contractapi.TransactionContextInterface) error {
 	records := []deviceConfig{
-		{AssetType: DEVICE_CONFIG_ASSET_TYPE, Name: "Gateway", IP: "127.0.0.1", MAC : "00:1A:2B:3C:4D:5E", Description : "Gateway of the network responsible for aggregating all data emitted by waspmotes and storing it in Hyperledger Fabric and IPFS"},
+		{AssetType: DEVICE_CONFIG_ASSET_TYPE, Name: "Gateway", IP: "192.168.1.44", MAC : "00:1A:2B:3C:4D:5E", Description : "Gateway of the network responsible for aggregating all data emitted by waspmotes and storing it in Hyperledger Fabric and IPFS"},
 	}
 
 	for _, record := range records {
