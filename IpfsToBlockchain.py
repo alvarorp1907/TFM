@@ -46,9 +46,10 @@ RX_BUFFER_LEN = 1024
 #################### variables and structures ####################
 
 HyperledgerCmd = {"InitLedger"   : INVOKE_CN_BASE_CMD + " \'{\"Args\":[\"InitLedger\"]}\'",
-                  "AddNewAsset"  : INVOKE_CN_BASE_CMD + " \'{{\"Args\":[\"AddNewAsset\"," + "\"{0}\",\"{1}\",\"{2}\"]" + "}}\'",
+                  "AddNewFileIPFS"  : INVOKE_CN_BASE_CMD + " \'{{\"Args\":[\"AddNewFileIPFS\"," + "\"{0}\",\"{1}\",\"{2}\"]" + "}}\'",
                   "GetAllAssets" : QUERY_CN_BASE_CMD + " \'{\"Args\":[\"GetAllAssets\"]}\'",
-                  "GetInfoAsset" : QUERY_CN_BASE_CMD + " \'{{\"Args\":[\"GetInfoAsset\"," + "\"{0}\"]" + "}}\'"}
+                  "GetInfoFileIPFS" : QUERY_CN_BASE_CMD + " \'{{\"Args\":[\"GetInfoFileIPFS\"," + "\"{0}\"]" + "}}\'",
+                  "GetInfoDevice" : QUERY_CN_BASE_CMD + " \'{{\"Args\":[\"GetInfoDevice\"," + "\"{0}\"]" + "}}\'"}
                   
 HyperledgerEnvVar = {"FABRIC_CFG_PATH" : f"{DIR_HYPERLEDGER_FABRIC_SAMPLES}/config/",
                      "CORE_PEER_TLS_ENABLED" : "true",
@@ -74,6 +75,8 @@ class MonitoringForIpfsHyperledger(daemon):
         
         self.server = None #TCP server socket 
         self.gateway = None #TCP gateway socket
+        
+        self.gatewayConfig = None
         
         #getaway event dictionary:  
         #key = command name | 1st value: command pattern , 2nd value : associated function pointer  
@@ -128,15 +131,14 @@ class MonitoringForIpfsHyperledger(daemon):
         """
         ret = False
         
-        res = subprocess.run(HyperledgerCmd["GetInfoAsset"].format(cidToCheck), capture_output=True, text=True, shell=True)
+        res = subprocess.run(HyperledgerCmd["GetInfoFileIPFS"].format(cidToCheck), capture_output=True, text=True, shell=True)
         stdout = res.stdout
         
         if stdout != "":
             dictInfoFile = json.loads(stdout)
-            print(f"obtained dict from Hyperledger -> {dictInfoFile}")
+            #print(f"obtained dict from Hyperledger -> {dictInfoFile}")
             CidReadHyperledger = dictInfoFile["cid"]
             if cidToCheck == CidReadHyperledger:
-                print("Nothing to store")
                 ret = True
                 
         return ret
@@ -160,7 +162,7 @@ class MonitoringForIpfsHyperledger(daemon):
         timestamp = datetime.datetime.fromtimestamp(timestamp)
         fmtTimestamp = timestamp.strftime('%Y-%m-%d %H:%M:%S')
         #invoking chaincode
-        res = subprocess.run(HyperledgerCmd["AddNewAsset"].format(fileName,cid,fmtTimestamp), capture_output=True, text=True, shell=True)
+        res = subprocess.run(HyperledgerCmd["AddNewFileIPFS"].format(fileName,cid,fmtTimestamp), capture_output=True, text=True, shell=True)
         cleanRes = res.stderr.strip(' \n\r')
         transactionStatusCode = cleanRes[-3:]
         
@@ -170,49 +172,76 @@ class MonitoringForIpfsHyperledger(daemon):
             print(f"Error invoking the chaincode in Hyperledger Fabric Blockchain: {res}")
     
     
-    
+    def getGatewayConfigFromHyperledgerFabric(self):
+        """
+        Function to get the gateway configuration from Hyperledger Fabric.
+        
+        Args:
+            None.
+        
+        Return:
+            Dictionary containing the gateway configuration
+            
+        Note:
+            None.
+        """
+        res = subprocess.run(HyperledgerCmd["GetInfoDevice"].format("Gateway"), capture_output=True, text=True, shell=True)
+        stdout = res.stdout
+        
+        if stdout != "":
+            gatewayConfig = json.loads(stdout)
+            return gatewayConfig
+        else: 
+            #error getting gateway configuration from Hyperledger Fabric
+            sys.exit(2)
+        
+        
+        
+        
     def waitUntilGatewayIsConnected(self):
-      """
-      Function that waits until a TCP connection is established with the target gateway.
-      
-      Args:
-          None.
-          
-      Return:
-          None.
-          
-      Note:
-          This function reject all clients except the target gateway device. 
-      """
-      gatewayIsConnected = False
-      gatewayIp = "127.0.0.1" #ToDo: fetch this info in Hyperledger fabric
-      
-      #creating a TCP socket
-      self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-      #setting options
-      self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-      #binding IP with port
-      self.server.bind((SERVER_HOST, SERVER_PORT))
-      #waiting for connection
-      self.server.listen(SERVER_MAX_NUMBER_CONNECTIONS)
-      
-      print("Waiting until gateway is connected...")
-      
-      while(not gatewayIsConnected):
-        #program is blocked here until a connection is established
-        clientSocket, clientAddress = self.server.accept()
-        clientIp , clientPort = clientAddress
-        #checking client
-        if clientIp == gatewayIp:
-          gatewayIsConnected = True
-          self.gateway = clientSocket
-        else:
-          print("No legitime connection, closing connection...")
-          clientSocket.close()
-      #once the target connection has been established,
-      #can stop listening server port
-      print("Connection established with gateway!")
-      self.server.close()
+        """
+        Function that waits until a TCP connection is established with the target gateway.
+        
+        Args:
+            None.
+            
+        Return:
+            None.
+            
+        Note:
+            This function reject all clients except the target gateway device. 
+        """
+        gatewayIsConnected = False
+        gatewayIp =  self.gatewayConfig["ip"]
+        
+        #print(f"Gateway IP {gatewayIp}")
+        
+        #creating a TCP socket
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #setting options
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        #binding IP with port
+        self.server.bind((SERVER_HOST, SERVER_PORT))
+        #waiting for connection
+        self.server.listen(SERVER_MAX_NUMBER_CONNECTIONS)
+        
+        print("Waiting until gateway is connected...")
+    
+        while(not gatewayIsConnected):
+            #program is blocked here until a connection is established
+            clientSocket, clientAddress = self.server.accept()
+            clientIp , clientPort = clientAddress
+            #checking client
+            if clientIp == gatewayIp:
+                gatewayIsConnected = True
+                self.gateway = clientSocket
+            else:
+                print("No legitime connection, closing connection...")
+                clientSocket.close()
+        #once the target connection has been established,
+        #can stop listening server port
+        print("Connection established with gateway!")
+        self.server.close()
 
 
 
@@ -289,6 +318,10 @@ class MonitoringForIpfsHyperledger(daemon):
         for environVarName, environVarValue in HyperledgerEnvVar.items():
             os.environ[environVarName] = environVarValue
             
+        #getting gateway info stored in Hyperledger Fabric
+        self.gatewayConfig = self.getGatewayConfigFromHyperledgerFabric()
+        
+        #waiting gateway connection
         self.waitUntilGatewayIsConnected()
         
         while True:

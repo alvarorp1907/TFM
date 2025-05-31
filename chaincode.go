@@ -66,9 +66,33 @@ func (c *CIDContract) InitLedger(ctx contractapi.TransactionContextInterface) er
 	return nil
 }
 
+//function to get a specific device configuration from world state
+func (c *CIDContract) GetInfoDevice(ctx contractapi.TransactionContextInterface, deviceName string) (*deviceConfig, error) {
+	data, err := ctx.GetStub().GetState(deviceName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from world state: %v", err)
+	}
+	if data == nil {
+		return nil, fmt.Errorf("the asset %s does not exist",deviceName)
+	}
+	
+	var asset deviceConfig
+	err = json.Unmarshal(data, &asset)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if asset.AssetType != DEVICE_CONFIG_ASSET_TYPE{
+		return nil, fmt.Errorf("the asset %s is not a registered device inside the sensor network",deviceName)
+	}
+	
+	return &asset, nil
+}
+
 //function to create a new asset in the World State containing the filename and CID stored in IPFS
-func (c *CIDContract) AddNewAsset(ctx contractapi.TransactionContextInterface, fileName string, cid string, timestamp string) error {
-	//exists, err := c.AssetExists(ctx, fileName)
+func (c *CIDContract) AddNewFileIPFS(ctx contractapi.TransactionContextInterface, fileName string, cid string, timestamp string) error {
+	//exists, err := c.FileIPFSExists(ctx, fileName)
 	//if err != nil {
 		//return err
 	//}
@@ -91,7 +115,7 @@ func (c *CIDContract) AddNewAsset(ctx contractapi.TransactionContextInterface, f
 }
 
 //function to read an existing file stored in the World State
-func (c *CIDContract) GetInfoAsset(ctx contractapi.TransactionContextInterface, cid string) (*CIDRecord, error) {
+func (c *CIDContract) GetInfoFileIPFS(ctx contractapi.TransactionContextInterface, cid string) (*CIDRecord, error) {
 	data, err := ctx.GetStub().GetState(cid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read from world state: %v", err)
@@ -104,6 +128,10 @@ func (c *CIDContract) GetInfoAsset(ctx contractapi.TransactionContextInterface, 
 	err = json.Unmarshal(data, &asset)
 	if err != nil {
 		return nil, err
+	}
+
+	if asset.AssetType != FILE_ASSET_TYPE{
+		return nil, fmt.Errorf("the asset %s is not a registered IPFS file",cid)
 	}
 	
 	return &asset, nil
@@ -141,7 +169,7 @@ func (c *CIDContract) GetAllAssets(ctx contractapi.TransactionContextInterface) 
 }
 
 //function that returns true when asset with given fileExist exists in world state
-func (c *CIDContract) AssetExists(ctx contractapi.TransactionContextInterface, cid string) (bool, error) {
+func (c *CIDContract) FileIPFSExists(ctx contractapi.TransactionContextInterface, cid string) (bool, error) {
 	assetJSON, err := ctx.GetStub().GetState(cid)
 	if err != nil {
 		return false, fmt.Errorf("failed to read from world state: %v", err)
@@ -151,8 +179,8 @@ func (c *CIDContract) AssetExists(ctx contractapi.TransactionContextInterface, c
 }
 
 // function that deletes an given asset from the world state.
-func (c *CIDContract) DeleteAsset(ctx contractapi.TransactionContextInterface, cid string) error {
-	exists, err := c.AssetExists(ctx, cid)
+func (c *CIDContract) DeleteFileIPFS(ctx contractapi.TransactionContextInterface, cid string) error {
+	exists, err := c.FileIPFSExists(ctx, cid)
 	if err != nil {
 		return err
 	}
