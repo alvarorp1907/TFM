@@ -1,12 +1,13 @@
 import socket
 import time
 import signal
+import random
 
 # Configuración
-IP_SERVIDOR = '192.168.1.34'  #IP server
+IP_SERVIDOR = '192.168.1.38'  #IP server
 PUERTO_SERVIDOR = 4000
 
-GATEWAY_STORE_CID_EVENT = b"STORE_CID HASJASIAJAS pruebaDummy1"
+GATEWAY_STORE_CID_EVENT = "STORE_CID {0} pruebaDummy{1}"
 
 # Crear socket TCP
 cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -19,16 +20,9 @@ try:
     signal.signal(signal.SIGINT, handler_sigint)
     
     # Intentar conectar con el servidor
+    print("conectando al server")
     cliente.connect((IP_SERVIDOR, PUERTO_SERVIDOR))
     print(f"Conectado al servidor en {IP_SERVIDOR}:{PUERTO_SERVIDOR}")
-
-    # Enviar mensaje
-    # mensaje = "Hola servidor, soy el cliente."
-    # cliente.sendall(mensaje.encode())
-
-    # Recibir respuesta
-    # respuesta = cliente.recv(1024)
-    # print("Respuesta del servidor:", respuesta.decode())
 
 except ConnectionRefusedError:
     print("No se pudo conectar al servidor.")
@@ -36,7 +30,10 @@ except Exception as e:
     print("Ocurrió un error:", e)
 
 while(True):
-    time.sleep(5)
-    cliente.sendall(GATEWAY_STORE_CID_EVENT)
-    break
+    time.sleep(20)
+    randNumber = random.randint(1, 500)
+    msg = GATEWAY_STORE_CID_EVENT.format(randNumber,randNumber)
+    binMsg = msg.encode('utf-8')
+    print(msg)
+    cliente.sendall(binMsg)
 print("Fin del script!!")

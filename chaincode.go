@@ -35,7 +35,7 @@ type CIDRecord struct {
 //IP : IP address of the device
 //MAC : MAC address of the device
 //description : description of the device
-type deviceConfig struct {
+type DeviceConfig struct {
 
 	AssetType string `json:"AssetType"`
 	Name string `json:"name"`
@@ -47,8 +47,8 @@ type deviceConfig struct {
 
 // InitLedger adds a base set of assets to the ledger
 func (c *CIDContract) InitLedger(ctx contractapi.TransactionContextInterface) error {
-	records := []deviceConfig{
-		{AssetType: DEVICE_CONFIG_ASSET_TYPE, Name: "Gateway", IP: "192.168.1.44", MAC : "00:1A:2B:3C:4D:5E", Description : "Gateway of the network responsible for aggregating all data emitted by waspmotes and storing it in Hyperledger Fabric and IPFS"},
+	records := []DeviceConfig{
+		{AssetType: DEVICE_CONFIG_ASSET_TYPE, Name: "Gateway", IP: "192.168.1.36", MAC : "00:1A:2B:3C:4D:5E", Description : "Gateway of the network responsible for aggregating all data emitted by waspmotes and storing it in Hyperledger Fabric and IPFS"},
 	}
 
 	for _, record := range records {
@@ -67,7 +67,7 @@ func (c *CIDContract) InitLedger(ctx contractapi.TransactionContextInterface) er
 }
 
 //function to get a specific device configuration from world state
-func (c *CIDContract) GetInfoDevice(ctx contractapi.TransactionContextInterface, deviceName string) (*deviceConfig, error) {
+func (c *CIDContract) GetInfoDevice(ctx contractapi.TransactionContextInterface, deviceName string) (*DeviceConfig, error) {
 	data, err := ctx.GetStub().GetState(deviceName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read from world state: %v", err)
@@ -76,7 +76,7 @@ func (c *CIDContract) GetInfoDevice(ctx contractapi.TransactionContextInterface,
 		return nil, fmt.Errorf("the asset %s does not exist",deviceName)
 	}
 	
-	var asset deviceConfig
+	var asset DeviceConfig
 	err = json.Unmarshal(data, &asset)
 
 	if err != nil {
@@ -85,53 +85,6 @@ func (c *CIDContract) GetInfoDevice(ctx contractapi.TransactionContextInterface,
 
 	if asset.AssetType != DEVICE_CONFIG_ASSET_TYPE{
 		return nil, fmt.Errorf("the asset %s is not a registered device inside the sensor network",deviceName)
-	}
-	
-	return &asset, nil
-}
-
-//function to create a new asset in the World State containing the filename and CID stored in IPFS
-func (c *CIDContract) AddNewFileIPFS(ctx contractapi.TransactionContextInterface, fileName string, cid string, timestamp string) error {
-	//exists, err := c.FileIPFSExists(ctx, fileName)
-	//if err != nil {
-		//return err
-	//}
-	//if exists {
-		//return fmt.Errorf("the asset %s already exists", fileName)
-	//}
-	
-	record := CIDRecord{
-		AssetType: FILE_ASSET_TYPE,
-		FileName: fileName,
-		CID:      cid,
-		Timestamp: timestamp,
-	}
-
-	data, err := json.Marshal(record)
-	if err != nil {
-		return err
-	}
-	return ctx.GetStub().PutState(cid, data)
-}
-
-//function to read an existing file stored in the World State
-func (c *CIDContract) GetInfoFileIPFS(ctx contractapi.TransactionContextInterface, cid string) (*CIDRecord, error) {
-	data, err := ctx.GetStub().GetState(cid)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read from world state: %v", err)
-	}
-	if data == nil {
-		return nil, fmt.Errorf("the asset %s does not exist",cid)
-	}
-	
-	var asset CIDRecord
-	err = json.Unmarshal(data, &asset)
-	if err != nil {
-		return nil, err
-	}
-
-	if asset.AssetType != FILE_ASSET_TYPE{
-		return nil, fmt.Errorf("the asset %s is not a registered IPFS file",cid)
 	}
 	
 	return &asset, nil
@@ -168,15 +121,93 @@ func (c *CIDContract) GetAllAssets(ctx contractapi.TransactionContextInterface) 
 	return assets, nil
 }
 
-//function that returns true when asset with given fileExist exists in world state
+//function that returns true when asset with given fileExist exists in world state, otherwise false
 func (c *CIDContract) FileIPFSExists(ctx contractapi.TransactionContextInterface, cid string) (bool, error) {
 	assetJSON, err := ctx.GetStub().GetState(cid)
 	if err != nil {
 		return false, fmt.Errorf("failed to read from world state: %v", err)
 	}
 
-	return assetJSON != nil, nil
+	if assetJSON == nil {
+		return false, nil
+	}
+
+	var asset CIDRecord
+	err = json.Unmarshal(assetJSON, &asset)
+	if err != nil {
+		return false, err
+	}
+
+	if asset.AssetType != FILE_ASSET_TYPE {
+		return false, fmt.Errorf("the asset %s exists but it's not an IPFS file!!", cid)
+	}
+
+	return true, nil
 }
+
+
+//function to create a new asset in the World State containing the filename and CID stored in IPFS
+func (c *CIDContract) AddNewFileIPFS(ctx contractapi.TransactionContextInterface, fileName string, cid string, timestamp string) error {
+
+
+
+	if fileName == "" || cid == "" {
+	return fmt.Errorf("fileName and cid cannot be empty")
+	}
+
+
+	exists, err := c.FileIPFSExists(ctx, cid)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return fmt.Errorf("the asset %s exists in the ledger", cid)
+	}
+	
+	record := CIDRecord{
+		AssetType: FILE_ASSET_TYPE,
+		FileName: fileName,
+		CID:      cid,
+		Timestamp: timestamp,
+	}
+
+	data, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	return ctx.GetStub().PutState(cid, data)
+}
+
+//function to read an existing file stored in the World State
+func (c *CIDContract) GetInfoFileIPFS(ctx contractapi.TransactionContextInterface, cid string) (*CIDRecord, error) {
+	exists, err := c.FileIPFSExists(ctx, cid)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, fmt.Errorf("the asset %s doesn't exist in the ledger", cid)
+	}
+
+	data, err := ctx.GetStub().GetState(cid)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if data == nil {
+   		return nil, fmt.Errorf("the asset %s doesn't exist in the ledger", cid)
+	}
+
+	var asset CIDRecord
+	err = json.Unmarshal(data, &asset)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &asset, nil
+}
+
 
 // function that deletes an given asset from the world state.
 func (c *CIDContract) DeleteFileIPFS(ctx contractapi.TransactionContextInterface, cid string) error {
@@ -190,6 +221,7 @@ func (c *CIDContract) DeleteFileIPFS(ctx contractapi.TransactionContextInterface
 
 	return ctx.GetStub().DelState(cid)
 }
+
 
 func main() {
 	chaincode, err := contractapi.NewChaincode(new(CIDContract))

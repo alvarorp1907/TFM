@@ -192,7 +192,7 @@ class MonitoringForIpfsHyperledger(daemon):
             gatewayConfig = json.loads(stdout)
             return gatewayConfig
         else: 
-            #error getting gateway configuration from Hyperledger Fabric
+            print("Error getting gateway configuration from Hyperledger Fabric")
             sys.exit(2)
         
         
@@ -224,10 +224,9 @@ class MonitoringForIpfsHyperledger(daemon):
         self.server.bind((SERVER_HOST, SERVER_PORT))
         #waiting for connection
         self.server.listen(SERVER_MAX_NUMBER_CONNECTIONS)
-        
-        print("Waiting until gateway is connected...")
     
         while(not gatewayIsConnected):
+            print("Waiting until gateway is connected...")
             #program is blocked here until a connection is established
             clientSocket, clientAddress = self.server.accept()
             clientIp , clientPort = clientAddress
