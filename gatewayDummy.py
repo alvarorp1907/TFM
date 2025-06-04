@@ -4,7 +4,7 @@ import signal
 import random
 
 # Configuración
-IP_SERVIDOR = '192.168.1.38'  #IP server
+IP_SERVIDOR = '192.168.1.44'  #IP server
 PUERTO_SERVIDOR = 4000
 
 GATEWAY_STORE_CID_EVENT = "STORE_CID {0} pruebaDummy{1}"
