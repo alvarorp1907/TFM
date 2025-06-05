@@ -10,6 +10,8 @@ from daemonClass import daemon
 import datetime
 import socket
 import re
+import http.server
+import ssl
 
 #################### constants ####################
 
@@ -37,11 +39,20 @@ QUERY_CN_BASE_CMD = f"peer chaincode query -C {CHAINCODE_CHANNEL} -n {CHAINCODE_
 
 CID_CODE_ERROR = "-1"
 
-#TCP server information
+#project directory where certs are stored
+CERTS_DIR = "/home/alvarorp19/scriptsPyTFM/"
+#certificates directories
+CERT_SERVER_DIR = "./serverCertificates/"
+CERT_CA_DIR = "./CAcertificates/"
+
+#HTTPS server information
+LOCALHOST = "127.0.0.1"
 SERVER_MAX_NUMBER_CONNECTIONS = 5
-SERVER_PORT = 4000
+SERVER_PORT = 5000
 SERVER_HOST = "0.0.0.0"
 RX_BUFFER_LEN = 1024
+
+
 
 #################### variables and structures ####################
 
@@ -57,6 +68,43 @@ HyperledgerEnvVar = {"FABRIC_CFG_PATH" : f"{DIR_HYPERLEDGER_FABRIC_SAMPLES}/conf
                      "CORE_PEER_TLS_ROOTCERT_FILE" : DIR_CERT_CA_ORG1,
                      "CORE_PEER_MSPCONFIGPATH" : DIR_MSP_PEER_ORG1_CONF,
                      "CORE_PEER_ADDRESS": "localhost:7051"}
+                     
+                     
+####################            Functions               ####################
+
+def get_ssl_context(certfile, keyfile):
+    """
+    Function to initialize the SSL context.
+    
+    Args:
+        certfile : server's certificate
+        keyfile : server's private key 
+        
+    Return:
+        Context of the SSL connection
+    """
+    certfile = CERT_SERVER_DIR + certfile
+    keyfile = CERT_SERVER_DIR + keyfile
+    
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(certfile, keyfile)
+    context.set_ciphers("@SECLEVEL=1:ALL")
+    
+    #enabling client certificate mode (mTLS mode)
+    #client must present it certificate to establish
+    #a communication with the HTTPS server
+    context.verify_mode = ssl.CERT_REQUIRED
+    #Loading CA certificate
+    context.load_verify_locations(cafile=CERT_CA_DIR + "ca.cert")
+    
+    return context
+
+####################            MyHandler class         ####################
+class MyHandler(http.server.SimpleHTTPRequestHandler):
+    def do_POST(self):
+        content_length = int(self.headers["Content-Length"])
+        post_data = self.rfile.read(content_length)
+        print(post_data.decode("utf-8"))
 
 
 #################### MonitoringForIpfsHyperledger class ####################
@@ -198,7 +246,7 @@ class MonitoringForIpfsHyperledger(daemon):
         
         
         
-    def waitUntilGatewayIsConnected(self):
+    def initHTTPSserver(self):
         """
         Function that waits until a TCP connection is established with the target gateway.
         
@@ -211,36 +259,14 @@ class MonitoringForIpfsHyperledger(daemon):
         Note:
             This function reject all clients except the target gateway device. 
         """
-        gatewayIsConnected = False
-        gatewayIp =  self.gatewayConfig["ip"]
-        
-        #print(f"Gateway IP {gatewayIp}")
-        
-        #creating a TCP socket
-        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        #setting options
-        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        #binding IP with port
-        self.server.bind((SERVER_HOST, SERVER_PORT))
-        #waiting for connection
-        self.server.listen(SERVER_MAX_NUMBER_CONNECTIONS)
-    
-        while(not gatewayIsConnected):
-            print("Waiting until gateway is connected...")
-            #program is blocked here until a connection is established
-            clientSocket, clientAddress = self.server.accept()
-            clientIp , clientPort = clientAddress
-            #checking client
-            if clientIp == gatewayIp:
-                gatewayIsConnected = True
-                self.gateway = clientSocket
-            else:
-                print("No legitime connection, closing connection...")
-                clientSocket.close()
-        #once the target connection has been established,
-        #can stop listening server port
-        print("Connection established with gateway!")
-        self.server.close()
+        server_address = (LOCALHOST, SERVER_PORT)
+        httpd = http.server.HTTPServer(server_address, MyHandler)
+  
+        context = get_ssl_context("server.cert", "server.key")
+        httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+  
+        print(f"HTTPS server running in {server_address}")
+        httpd.serve_forever()
 
 
 
@@ -308,49 +334,51 @@ class MonitoringForIpfsHyperledger(daemon):
         Note:
             This function is executed in a background process
         """
+        
+        self.initHTTPSserver()
         #isFirstIteration = True
         #lastFileModified = ""#path of the last file modified
         #lastTimeStamp = 0 #timeStamp of the last file modified
         #targetDir = Path(DIR_FILES)
         
         #set environment variables before executing any operation in Hyperledger
-        for environVarName, environVarValue in HyperledgerEnvVar.items():
-            os.environ[environVarName] = environVarValue
+        # for environVarName, environVarValue in HyperledgerEnvVar.items():
+            # os.environ[environVarName] = environVarValue
             
-        #getting gateway info stored in Hyperledger Fabric
-        self.gatewayConfig = self.getGatewayConfigFromHyperledgerFabric()
+        # #getting gateway info stored in Hyperledger Fabric
+        # self.gatewayConfig = self.getGatewayConfigFromHyperledgerFabric()
         
-        #waiting gateway connection
-        self.waitUntilGatewayIsConnected()
+        # #waiting gateway connection
+        # self.waitUntilGatewayIsConnected()
         
-        while True:
+        # while True:
             
-            #wait until some gateway event arrives
-            rawData = self.gateway.recv(RX_BUFFER_LEN)
-            recvData = rawData.decode()
+            # #wait until some gateway event arrives
+            # rawData = self.gateway.recv(RX_BUFFER_LEN)
+            # recvData = rawData.decode()
             
-            #verify if gateway connection still open
-            isConnectionClosed = self.isSocketClosed()
+            # #verify if gateway connection still open
+            # isConnectionClosed = self.isSocketClosed()
             
-            if isConnectionClosed:#closed
-                self.waitUntilGatewayIsConnected()
-            else:#open
-              #processing received data from gateway
-              print(f"RECV -> {recvData}")
-              cmdNameRcv = recvData.split()[0]
-              cmdParamsTuple = tuple()
+            # if isConnectionClosed:#closed
+                # self.waitUntilGatewayIsConnected()
+            # else:#open
+              # #processing received data from gateway
+              # print(f"RECV -> {recvData}")
+              # cmdNameRcv = recvData.split()[0]
+              # cmdParamsTuple = tuple()
               
-              for cmdName, value in self.gatewayEventDict.items():
-                  if cmdNameRcv == cmdName:
-                      #check received msg structure
-                      pattern = value[0]
-                      match = re.search(pattern,recvData)
-                      if match:
-                        cmdParamsTuple = match.groups()
-                        print(cmdParamsTuple)
-                        ptrFunction = value[1]
-                        ptrFunction(cmdParamsTuple)
-                      break
+              # for cmdName, value in self.gatewayEventDict.items():
+                  # if cmdNameRcv == cmdName:
+                      # #check received msg structure
+                      # pattern = value[0]
+                      # match = re.search(pattern,recvData)
+                      # if match:
+                        # cmdParamsTuple = match.groups()
+                        # print(cmdParamsTuple)
+                        # ptrFunction = value[1]
+                        # ptrFunction(cmdParamsTuple)
+                      # break
     
     
     
@@ -365,6 +393,7 @@ class MonitoringForIpfsHyperledger(daemon):
         Note:
             None.
         """
+        os.chdir(CERTS_DIR)
         self.filesMonitoring()
 
         
