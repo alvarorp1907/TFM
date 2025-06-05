@@ -99,21 +99,133 @@ def get_ssl_context(certfile, keyfile):
     
     return context
 
-####################            MyHandler class         ####################
-class MyHandler(http.server.SimpleHTTPRequestHandler):
+####################     MyHandlerForRequestHTTPS class     ####################
+
+class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
+
+    ###static methods ###
+    
+       ###sttic methods###
+   
+   
+    @staticmethod
+    def uploadFileToHyperledgerFabric(fileName,cid,timestamp):
+        """
+        Def:
+            Function to upload a file to Hyperledger Fabric Blockchain.
+        Args:
+            targetFile : full path of the file.
+            cid : IPFS CID
+            timeStamp : Unix time
+        Return:
+            True if operation is successfully done otherwise False.
+        Note:
+            None
+        """
+        #formatting unix time
+        timestamp = datetime.datetime.fromtimestamp(timestamp)
+        fmtTimestamp = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        #invoking chaincode
+        res = subprocess.run(HyperledgerCmd["AddNewFileIPFS"].format(fileName,cid,fmtTimestamp), capture_output=True, text=True, shell=True)
+        cleanRes = res.stderr.strip(' \n\r')
+        transactionStatusCode = cleanRes[-3:]
+        
+        if (transactionStatusCode == "200"):
+            print(f"CID '{cid}' successfully stored in Hyperledger Fabric Blockchain")
+        else:
+            print(f"Error invoking the chaincode in Hyperledger Fabric Blockchain: {res}")
+            
+            
+    @staticmethod
+    def isIPFfileStoredInHyperledger(cidToCheck):
+        """
+        Def:
+            Function to check if the file specified at first parameter
+            is stored in Hyperledger Fabric or not.
+        Args:
+            targetFile : full path of the target file
+        Return:
+            True if found otherwise False   
+        Note:
+            None
+        """
+        ret = False
+        
+        res = subprocess.run(HyperledgerCmd["GetInfoFileIPFS"].format(cidToCheck), capture_output=True, text=True, shell=True)
+        stdout = res.stdout
+        
+        if stdout != "":
+            dictInfoFile = json.loads(stdout)
+            #print(f"obtained dict from Hyperledger -> {dictInfoFile}")
+            CidReadHyperledger = dictInfoFile["cid"]
+            if cidToCheck == CidReadHyperledger:
+                ret = True
+                
+        return ret
+        
+        
+    @staticmethod
+    def uploadCIDtoHyperledger(cmdArgs):
+        """
+        Upload file to Hyperledger Fabric.
+        
+        Args:
+            cid : IPFS CID to upload.
+            filename : filename
+            
+        Return:
+            None
+        """
+        cid = cmdArgs[0]
+        filename = cmdArgs[1]
+        unixTime = time.time()
+        
+        #checking if we need to summit modifications to IPFS and blockchain
+        isCidStored = isIPFfileStoredInHyperledger(cid)
+        if isCidStored == False:
+            #upload IPFS file to Hyperledger Fabric
+            print(f"Uploading info from file '{filename}' to Hyperledger Fabric!")
+            uploadFileToHyperledgerFabric(filename,cid,unixTime)
+        else:
+            print(f"CID '{cid} has been previously stored in Hyperledger'")
+
+
+
+    ###static defines and variables###
+    
+    GATEWAY_STORE_CID_EVENT = "STORE_CID"
+    
+    #getaway event dictionary:  
+    #key = command name | 1st value: command pattern , 2nd value : associated function pointer
+    gatewayEventDict = {GATEWAY_STORE_CID_EVENT : [fr"{GATEWAY_STORE_CID_EVENT} ([a-zA-Z0-9_]+) ([a-zA-Z0-9_]+)",uploadCIDtoHyperledger]}
+    
+    
+    
+    ####HTTP methods####
+    
+    
+    
     def do_POST(self):
+        """
+        POST method routine to be executed once a POST request
+        has been received.
+        
+        Args:
+            None
+            
+        Return:
+            None
+        """
         content_length = int(self.headers["Content-Length"])
         post_data = self.rfile.read(content_length)
         print(post_data.decode("utf-8"))
+
 
 
 #################### MonitoringForIpfsHyperledger class ####################
 
 
 class MonitoringForIpfsHyperledger(daemon):
-    
-    #gateway events
-    GATEWAY_STORE_CID_EVENT = "STORE_CID"
 
     def __init__(self,pidFile,debugLevel):
         """
@@ -124,14 +236,10 @@ class MonitoringForIpfsHyperledger(daemon):
         self.server = None #TCP server socket 
         self.gateway = None #TCP gateway socket
         
-        self.gatewayConfig = None
-        
-        #getaway event dictionary:  
-        #key = command name | 1st value: command pattern , 2nd value : associated function pointer  
-        self.gatewayEventDict = {self.GATEWAY_STORE_CID_EVENT : [fr"{self.GATEWAY_STORE_CID_EVENT} ([a-zA-Z0-9_]+) ([a-zA-Z0-9_]+)", self.uploadCIDtoHyperledger]}
+        self.gatewayConfig = None  
         
         
-    
+        
     def uploadFileToIPFS(self,file):
         """
         Def:
@@ -162,62 +270,6 @@ class MonitoringForIpfsHyperledger(daemon):
             retStatus = False
         
         return retStatus,fileIPFSCID
-    
-    
-    
-    def isIPFfileStoredInHyperledger(self,cidToCheck):
-        """
-        Def:
-            Function to check if the file specified at first parameter
-            is stored in Hyperledger Fabric or not.
-        Args:
-            targetFile : full path of the target file
-        Return:
-            True if found otherwise False   
-        Note:
-            None
-        """
-        ret = False
-        
-        res = subprocess.run(HyperledgerCmd["GetInfoFileIPFS"].format(cidToCheck), capture_output=True, text=True, shell=True)
-        stdout = res.stdout
-        
-        if stdout != "":
-            dictInfoFile = json.loads(stdout)
-            #print(f"obtained dict from Hyperledger -> {dictInfoFile}")
-            CidReadHyperledger = dictInfoFile["cid"]
-            if cidToCheck == CidReadHyperledger:
-                ret = True
-                
-        return ret
-    
-    
-    
-    def uploadFileToHyperledgerFabric(self,fileName,cid,timestamp):
-        """
-        Def:
-            Function to upload a file to Hyperledger Fabric Blockchain.
-        Args:
-            targetFile : full path of the file.
-            cid : IPFS CID
-            timeStamp : Unix time
-        Return:
-            True if operation is successfully done otherwise False.
-        Note:
-            None
-        """
-        #formatting unix time
-        timestamp = datetime.datetime.fromtimestamp(timestamp)
-        fmtTimestamp = timestamp.strftime('%Y-%m-%d %H:%M:%S')
-        #invoking chaincode
-        res = subprocess.run(HyperledgerCmd["AddNewFileIPFS"].format(fileName,cid,fmtTimestamp), capture_output=True, text=True, shell=True)
-        cleanRes = res.stderr.strip(' \n\r')
-        transactionStatusCode = cleanRes[-3:]
-        
-        if (transactionStatusCode == "200"):
-            print(f"CID '{cid}' successfully stored in Hyperledger Fabric Blockchain")
-        else:
-            print(f"Error invoking the chaincode in Hyperledger Fabric Blockchain: {res}")
     
     
     def getGatewayConfigFromHyperledgerFabric(self):
@@ -260,65 +312,13 @@ class MonitoringForIpfsHyperledger(daemon):
             This function reject all clients except the target gateway device. 
         """
         server_address = (LOCALHOST, SERVER_PORT)
-        httpd = http.server.HTTPServer(server_address, MyHandler)
+        httpd = http.server.HTTPServer(server_address, MyHandlerForRequestHTTPS)
   
         context = get_ssl_context("server.cert", "server.key")
         httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
   
         print(f"HTTPS server running in {server_address}")
         httpd.serve_forever()
-
-
-
-    def isSocketClosed(self):
-      """
-      This function detects whether the gateway socket is closed or not.
-      
-      Args:
-          None
-          
-      Return:
-          Bool
-      """
-      try:
-          # this will try to read bytes without blocking and also without removing them from buffer (peek only)
-          data = self.gateway.recv(16, socket.MSG_DONTWAIT | socket.MSG_PEEK)
-          if len(data) == 0:
-              return True
-      except BlockingIOError:
-          return False  # socket is open and reading from it would block
-      except ConnectionResetError:
-          return True  # socket was closed for some other reason
-      except Exception as e:
-          print("unexpected exception when checking if a socket is closed")
-          return False
-      return False          
-   
-
-
-    def uploadCIDtoHyperledger(self,cmdArgs):
-        """
-        Upload file to Hyperledger Fabric.
-        
-        Args:
-            cid : IPFS CID to upload.
-            filename : filename
-            
-        Return:
-            None
-        """
-        cid = cmdArgs[0]
-        filename = cmdArgs[1]
-        unixTime = time.time()
-        
-        #checking if we need to summit modifications to IPFS and blockchain
-        isCidStored = self.isIPFfileStoredInHyperledger(cid)
-        if isCidStored == False:
-            #upload IPFS file to Hyperledger Fabric
-            print(f"Uploading info from file '{filename}' to Hyperledger Fabric!")
-            self.uploadFileToHyperledgerFabric(filename,cid,unixTime)
-        else:
-            print(f"CID '{cid} has been previously stored in Hyperledger'")
     
     
     
@@ -334,8 +334,7 @@ class MonitoringForIpfsHyperledger(daemon):
         Note:
             This function is executed in a background process
         """
-        
-        self.initHTTPSserver()
+        pass
         #isFirstIteration = True
         #lastFileModified = ""#path of the last file modified
         #lastTimeStamp = 0 #timeStamp of the last file modified
@@ -394,7 +393,7 @@ class MonitoringForIpfsHyperledger(daemon):
             None.
         """
         os.chdir(CERTS_DIR)
-        self.filesMonitoring()
+        self.initHTTPSserver()
 
         
      
