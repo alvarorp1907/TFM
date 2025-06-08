@@ -42,14 +42,13 @@ CID_CODE_ERROR = "-1"
 #project directory where certs are stored
 CERTS_DIR = "/home/alvarorp19/scriptsPyTFM/"
 #certificates directories
-CERT_SERVER_DIR = "./serverCertificates/"
+CERT_SERVER_DIR = "./serverCertificates+/"
 CERT_CA_DIR = "./CAcertificates/"
 
 #HTTPS server information
-LOCALHOST = "127.0.0.1"
+LOCALHOST = "192.168.1.44"
 SERVER_MAX_NUMBER_CONNECTIONS = 5
 SERVER_PORT = 5000
-SERVER_HOST = "0.0.0.0"
 RX_BUFFER_LEN = 1024
 
 BLOCKCHAIN_OPERATION_COMPLETED = "SUCESS"
