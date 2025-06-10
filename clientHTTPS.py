@@ -16,7 +16,7 @@ print(f"POST -> {data}")
 response = requests.post(url, data=data, cert=cert, verify=ca)
     
 while(True):
-    time.sleep(20)
+    time.sleep(60)
     unixTime = str(time.time())
     data = "SEND_TELEMETRY {Sensor1: {temp: 24,hum: 58, timestamp: 06062025-190200}, Sensor2: {temp: 30, hum: 60, timestamp: " + unixTime + "}}"
     print(f"POST -> {data}")

@@ -25,6 +25,8 @@ DIR_CERT_CA_ORG2 = f"{DIR_HYPERLEDGER_NET}/organizations/peerOrganizations/org2.
 DIR_CERT_CA_ORDERER =f"{DIR_HYPERLEDGER_NET}/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem"
 DIR_MSP_PEER_ORG1_CONF = f"{DIR_HYPERLEDGER_NET}/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp"
 
+DIR_TARGER_FOLDER_MFS = "/WaterTelemetry"
+
 #Hyperledger Fabric information
 CHAINCODE_NAME = "chaincode"
 CHAINCODE_CHANNEL = "mychannel"
@@ -100,7 +102,29 @@ def get_ssl_context(certfile, keyfile):
     context.load_verify_locations(cafile=CERT_CA_DIR + "ca.cert")
     
     return context
-
+    
+    
+    
+def initDaemonIpfs():
+    """
+    This function initializes the local IPFS deamon.
+    
+    Args:
+        None.
+        
+    Return:
+        None
+        
+    Note:
+        This functions lauch the local IPFS deamon using a background process
+        to not blocking the main process.
+    """
+    processIPFS = subprocess.Popen(['ipfs', 'daemon'])
+    exitCode = processIPFS.wait()
+    print(f"IPFS process code: {exitCode}")
+    
+    
+    
 ####################     MyHandlerForRequestHTTPS class     ####################
 
 class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
@@ -208,7 +232,6 @@ class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
             Note:
                 None
             """
-            retStatus = True
             fileIPFSCID = CID_CODE_ERROR
             fileIPFSJson = {'fileIPFS': open(file, 'rb')}
             
@@ -224,12 +247,145 @@ class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
             else:
                 print(f"File name as {file} cannot be uploaded to IPFS")
                 print(f"Error code {response.status_code} received from local API server")
-                retStatus = False
+                raise Exception(f'{response.text}')
+                
+            return fileIPFSCID
+    
+    
+
+    @staticmethod
+    def copyIPFStoMfs(cid, mfsPath):
+        """
+        function to copy a IPFS file to the local MFS.
+        
+        Args:
+            cid : cid to be copied.
+            mfsPath : path of the folder in MFS.
             
-            return retStatus,fileIPFSCID
+        Return:
+            None
+        """
+        response = requests.post('http://127.0.0.1:5001/api/v0/files/cp', params={
+            'arg': [f'/ipfs/{cid}',mfsPath],
+            'parents': 'true'})
+                                
+        if response.status_code == 200:
+            print(f"CID {cid} copied to MFS {mfsPath}")
+        else:
+            print(f"Error {response.status_code} : trying to copy CID {cid} to MFS {mfsPath}")
+            raise Exception(f'{response.text}')
+        
+        
+    
+    @staticmethod
+    def updateIPNS(cid):
+        """
+        Function to update the pointer of IPNS.
+        
+        Args :
+            cid : cid to be published.
             
+        Return:
+            None.
+        """
+        response = requests.post('http://127.0.0.1:5001/api/v0/name/publish', params={'arg': f'/ipfs/{cid}'})
+        
+        if response.status_code == 200:
+            ipnsName = response.json()['Name']
+            print(f'URL IPNS: https://ipfs.io/ipns/{ipnsName}')
+            return ipnsName
+        else:
+            print(f'Error trying to publish on IPNS: {response.text}')
+            raise Exception(f'{response.text}')
+    
+    
+    
+    @staticmethod
+    def MFSfolderExistsIPFS(folderPath):
+        """
+        This function creates the target dir in MFS if the dir 
+        doesn't exist.
+        
+        Args:
+            folderPath : target dir.
             
+        Return:
+            None.
+        """
+        response = requests.post('http://127.0.0.1:5001/api/v0/files/stat', params={'arg': folderPath})
+        
+        if response.status_code != 200:
+            #the folder doesn't exist so we need to create it
+            print(f'Creating folder MFS: {folderPath}')
+            response = requests.post('http://127.0.0.1:5001/api/v0/files/mkdir', params={'arg': folderPath, 'parents': 'true'})
             
+            if response.status_code != 200:
+                print(f"Error while creaing folder {folderPath} in IPFS MFS")
+                raise Exception(f'{response.text}')
+        
+
+
+    @staticmethod  
+    def getMFSfolderCID(folderPath):
+        """
+        Function to get the CID of the MFS folder.
+        
+        Args:
+            folderPath : MFS path.
+            
+        Return:
+            The CID of th e MFS folder.
+        """
+        response = requests.post('http://127.0.0.1:5001/api/v0/files/stat', params={'arg': folderPath})
+        
+        if response.status_code == 200:
+            foldercid = response.json()['Hash']
+            print(f'Actual CID of the target folder in MFS {folderPath}: {foldercid}')
+            return foldercid
+        else:
+            print(f"Error {response.status_code} getting folder's CID at MFS")
+            raise Exception(f'{response.text}')
+
+    
+    
+    @staticmethod
+    def routineIPFS(filename):
+        """
+        IPFS routine that will be executed every time that 
+        gateway send telemetry to the HTPPS server.
+        
+        The routine is composed by several steps:
+        1 -> check that the mutable folder exists at local MFS.
+        2 -> Upload file to IPFS.
+        3 -> Copy uploaded file to folder at MFS.
+        4 -> Get CID of the folder.
+        5 -> publish CID in IPNS
+        
+        Args:
+            filename : filename to upload at local IPFS node.
+            
+        Return:
+            operation status code and new file CID
+        """
+        retStatus = True
+        fileCid = ""
+        newfolderCid = ""
+        filePathInMFS = DIR_TARGER_FOLDER_MFS + '/' + filename
+        
+        try:
+            MyHandlerForRequestHTTPS.MFSfolderExistsIPFS(DIR_TARGER_FOLDER_MFS)
+            fileCid = MyHandlerForRequestHTTPS.uploadFileToIPFS(filename)
+            MyHandlerForRequestHTTPS.copyIPFStoMfs(fileCid,filePathInMFS)
+            newfolderCid = MyHandlerForRequestHTTPS.getMFSfolderCID(DIR_TARGER_FOLDER_MFS)
+            MyHandlerForRequestHTTPS.updateIPNS(newfolderCid)
+        except Exception as e:
+            print(e)
+            retStatus = False
+        
+        return retStatus, fileCid
+    
+    
+    
     @staticmethod
     def uploadTelemetryBlockchainAndIPFS(cmdParam):
         """
@@ -252,14 +408,14 @@ class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
         #create a temporal file to store telemetry
         with open(fileName, 'w') as file:
             datos = file.write(telemetryToBeStored)
-        #upload file to IPFS
-        statusIpfs, cid = MyHandlerForRequestHTTPS.uploadFileToIPFS(fileName)
+        #upload to IPFS
+        statusIpfs, cid = MyHandlerForRequestHTTPS.routineIPFS(fileName)
         #upload to blockchain
         if statusIpfs:
             operationStatus = MyHandlerForRequestHTTPS.uploadCIDtoHyperledger(cid,fileName)
         #delete temporal file
         os.remove(fileName)
-        print("Temperal file {fileName} deleted!")
+        #print("Temperal file {fileName} deleted!")
         return operationStatus
         
         
@@ -291,20 +447,17 @@ class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
         """
         print(f"RECV -> {payload}")
         cmdNameRcv = payload.split()[0]
-        print(f"NAME CMD -> {cmdNameRcv}")
+        #print(f"NAME CMD -> {cmdNameRcv}")
         cmdParamsTuple = tuple()
         response = BLOCKCHAIN_OPERATION_FAILED
         
         for cmdName, value in MyHandlerForRequestHTTPS.gatewayEventDict.items():
             if cmdNameRcv == cmdName:
                 #check received msg structure
-                print("Entra")
                 pattern = value[0]
                 match = re.search(pattern,payload)
                 if match:
-                    print("entra2")
                     cmdParamsTuple = match.groups()
-                    print(cmdParamsTuple)
                     ptrFunction = value[1]
                     response = ptrFunction(cmdParamsTuple)
                     break
@@ -420,6 +573,7 @@ class MonitoringForIpfsHyperledger(daemon):
         Note:
             None.
         """
+        
         os.chdir(CERTS_DIR)
         #set environment variables before executing any operation in Hyperledger
         for environVarName, environVarValue in HyperledgerEnvVar.items():
