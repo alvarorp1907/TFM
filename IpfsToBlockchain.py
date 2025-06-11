@@ -56,6 +56,8 @@ RX_BUFFER_LEN = 1024
 BLOCKCHAIN_OPERATION_COMPLETED = "SUCESS"
 BLOCKCHAIN_OPERATION_FAILED = "FAILURE"
 
+OPERATION_COMPLETED_STATUS_CODE = 200
+OPERATION_FAILED_STATUS_CODE = 500
 
 
 #################### variables and structures ####################
@@ -389,7 +391,7 @@ class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
     @staticmethod
     def uploadTelemetryBlockchainAndIPFS(cmdParam):
         """
-        Function send the telemetry received from the client.
+        Function to upload the telemetry received from the client.
         
         Args:
             cmdParam : command parameters
@@ -487,7 +489,10 @@ class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
         postDecodedData = post_data.decode("utf-8")
         responsePayload = self.processRequest(postDecodedData)
         #sending a response to client
-        self.send_response(200)
+        if responsePayload == BLOCKCHAIN_OPERATION_COMPLETED:
+            self.send_response(OPERATION_COMPLETED_STATUS_CODE)
+        else:
+            self.send_response(OPERATION_FAILED_STATUS_CODE)
         self.send_header('Content-type', 'text/plain')  # Tipo de contenido
         self.end_headers()
         self.wfile.write(responsePayload.encode('utf-8'))
