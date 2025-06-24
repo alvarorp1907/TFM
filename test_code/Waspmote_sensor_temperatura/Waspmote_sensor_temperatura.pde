@@ -73,6 +73,8 @@ void setup()
 void loop()
 {
   // Si encontramos un sensor, leemos su temperatura
+  oneWire.reset_search();
+  oneWire.target_search(0x28);
   if (oneWire.search(sensorAddress))
   {
     // Solicitamos la conversión de temperatura
