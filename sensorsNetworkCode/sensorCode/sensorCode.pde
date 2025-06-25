@@ -40,7 +40,7 @@
 static float getPh(void);
 static float getTemperature(void);
 static int getTurbidity(void);
-static void sendMeasuresToGateway(void);
+static void sendMeasuresToGateway(float temperature, float ph, int turbidity);
 
 // Destination MAC address
 static char RX_ADDRESS[] = "0013A200417EE50B";
@@ -49,7 +49,10 @@ static char WASPMOTE_ID[] = "node_01";
 // define variable
 static uint8_t error;
 
-
+//Note: is important the connect the battery
+//in order to provide enough current to the sensors and RF modules
+//if you dont connect the external battery, the microcontroller
+//would reboot periodically
 
 void setup()
 {
@@ -57,13 +60,12 @@ void setup()
   PWR.setSensorPower(SENS_5V, SENS_ON);
   // init USB port
   USB.ON();
-  USB.println(F("Sending packets example"));
   
   // store Waspmote identifier in EEPROM memory
-  //frame.setID("SENSOR_WASPMOTE");
+  frame.setID("SENSOR_WASPMOTE");
   
   // init XBee
-  //xbee802.ON();
+  xbee802.ON();
   
 }
 
@@ -81,9 +83,10 @@ void loop()
   ph = getPh();
   USB.println(F("------------------------"));
 
+  //sending collected data to the gateway through xbee module
+  sendMeasuresToGateway(temperature,ph,turbidity);
+
   //desabling 5V pin to save battery
-  //Note: is important the connect the battery
-  //in order to provide enough current to the sensors
   PWR.setSensorPower(SENS_5V, SENS_OFF);
   //wait for five seconds
   delay(10000);
@@ -195,42 +198,37 @@ static int getTurbidity(void){
   return 20;
 }
 
-static void sendMeasuresToGateway(void){
+static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
+
+  char * temperatureStr = "";
+  sprintf(temperatureStr, "%f", temperature);
   
-  ///////////////////////////////////////////
-  // 1. Create ASCII frame
-  ///////////////////////////////////////////  
-
-//  // create new frame
-//  frame.createFrame(ASCII);  
-//  
-//  // add frame fields
-//  frame.addSensor(SENSOR_STR, "new_sensor_frame");
-//  frame.addSensor(SENSOR_BAT, PWR.getBatteryLevel()); 
+  // create new ASCII frame
+  frame.createFrame(ASCII);  
+  
+  // add frame fields
+  frame.addSensor(SENSOR_IN_TEMP, temperature);
+  frame.addSensor(SENSOR_BAT, PWR.getBatteryLevel()); 
   
 
-  ///////////////////////////////////////////
-  // 2. Send packet
-  ///////////////////////////////////////////  
-
-//  // send XBee packet
-//  error = xbee802.send( RX_ADDRESS, frame.buffer, frame.length );   
-//  
-//  // check TX flag
-//  if( error == 0 )
-//  {
-//    USB.println(F("send ok"));
-//    
-//    // blink green LED
-//    Utils.blinkGreenLED();
-//    
-//  }
-//  else 
-//  {
-//    USB.println(F("send error"));
-//    
-//    // blink red LED
-//    Utils.blinkRedLED();
-//  }
+  // send XBee packet
+  error = xbee802.send( RX_ADDRESS, frame.buffer, frame.length );   
+  
+  // check TX flag
+  if( error == 0 )
+  {
+    USB.println(F("send ok"));
+    
+    // blink green LED
+    Utils.blinkGreenLED();
+    
+  }
+  else 
+  {
+    USB.println(F("send error"));
+    
+    // blink red LED
+    Utils.blinkRedLED();
+  }
 }
 
