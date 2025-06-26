@@ -28,6 +28,7 @@
 #include <WaspXBee802.h>
 #include <WaspFrame.h>
 #include <WaspOneWire.h>
+#include <math.h>
 
 //Defines and macros
 #define PH_BUFFER_LEN  10
@@ -35,6 +36,10 @@
 #define OFFSET_PH_SENSOR 0.52
 #define ONE_WIRE_BUS DIGITAL6
 #define ADC_VREF 3.3
+#define SENSOR_TEMPERATURE_ID 70
+#define SENSOR_PH_ID 71
+#define SENSOR_TURBIDITY_ID 72
+
 
 //functions definition
 static float getPh(void);
@@ -199,17 +204,14 @@ static int getTurbidity(void){
 }
 
 static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
-
-  char * temperatureStr = "";
-  sprintf(temperatureStr, "%f", temperature);
   
   // create new ASCII frame
   frame.createFrame(ASCII);  
   
   // add frame fields
-  frame.addSensor(SENSOR_IN_TEMP, temperature);
-  frame.addSensor(SENSOR_BAT, PWR.getBatteryLevel()); 
-  
+  frame.addSensor(SENSOR_WATER_WT, temperature);
+  frame.addSensor(SENSOR_WATER_PH, ph); 
+  frame.addSensor(SENSOR_WATER_TURB, turbidity);
 
   // send XBee packet
   error = xbee802.send( RX_ADDRESS, frame.buffer, frame.length );   
