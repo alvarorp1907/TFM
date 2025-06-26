@@ -26,51 +26,147 @@
  */
  
 #include <WaspXBee802.h>
+#include <WaspWIFI_PRO.h>
+
+#define SERVER_IP "192.168.1.44"
+#define SERVER_PORT "5000"
+#define SERVER_PROTOCOL "http"
+#define SERVER_URL "/"
+#define N_MEASURES_TO_SERVER 5
+
+//function definitions
+static int sendTelemetryToServer(void);
 
 // define variable
-uint8_t error;
+int error;
 
+char body[] = "SEND_TELEMETRY aassaas asasas";
 
 void setup()
-{  
+{
   // init USB port
   USB.ON();
-  USB.println(F("Receiving example"));
 
   // init XBee 
   xbee802.ON();
+
+  //init WI-FI
+  WIFI_PRO.ON(SOCKET1);
 }
 
 
 void loop()
 { 
+  static int receivedMeasures = 0;
   // receive XBee packet (wait for 10 seconds)
-  error = xbee802.receivePacketTimeout( 10000 );
+  error = xbee802.receivePacketTimeout(2000);
+  
+  if( error == 0 ) 
+  {
+    USB.println(F("New measure received from sensor mote!"));
 
-  // check answer  
-//  if( error == 0 ) 
-//  {
     // Show data stored in '_payload' buffer indicated by '_length'
-  USB.print(F("Data: "));  
-  USB.println( xbee802._payload, xbee802._length);
+    USB.print(F("Data: "));  
+    USB.println( xbee802._payload, xbee802._length);
     
-  // Show data stored in '_payload' buffer indicated by '_length'
-  USB.print(F("Length: "));  
-  USB.println( xbee802._length,DEC);
-  //}
-//  else
-//  {
-//    // Print error message:
-//    /*
-//     * '7' : Buffer full. Not enough memory space
-//     * '6' : Error escaping character within payload bytes
-//     * '5' : Error escaping character in checksum byte
-//     * '4' : Checksum is not correct	  
-//     * '3' : Checksum byte is not available	
-//     * '2' : Frame Type is not valid
-//     * '1' : Timeout when receiving answer   
-//    */
-//    USB.print(F("Error receiving a packet:"));
-//    USB.println(error,DEC);     
-//  }
-} 
+    // Show data stored in '_payload' buffer indicated by '_length'
+    USB.print(F("Length: "));  
+    USB.println( xbee802._length,DEC);
+
+    receivedMeasures = receivedMeasures + 1;
+
+    //send collected measures to HTTP server each N_MEASURES_TO_SERVER measures received
+    if (receivedMeasures == N_MEASURES_TO_SERVER)
+    {
+      receivedMeasures = 0;
+      
+      //send collected measures to HTTP server
+      USB.print(F("Sending pending measures to HTTP server!"));
+      sendTelemetryToServer();
+    }
+  }
+}
+
+
+
+static int sendTelemetryToServer(void){
+
+  uint8_t error;
+  uint8_t status;
+  static unsigned long previous;
+
+  // get actual time
+  previous = millis();
+
+  // Switch ON 
+  error = WIFI_PRO.ON(SOCKET1);
+
+  if (error == 0)
+  {    
+    USB.println(F("1. WiFi switched ON"));
+  }
+  else
+  {
+    USB.println(F("1. WiFi did not initialize correctly"));
+  }
+
+  // Set url
+  error = WIFI_PRO.setURL( SERVER_PROTOCOL, SERVER_IP, SERVER_PORT, SERVER_URL );
+
+  // check response
+  if (error == 0)
+  {
+    USB.println(F("2. setURL OK"));
+  }
+  else
+  {
+    USB.println(F("2. Error calling 'setURL' function"));
+    WIFI_PRO.printErrorCode();
+  }
+
+  // Join AP 
+
+  // check connectivity
+  status =  WIFI_PRO.isConnected();
+
+  // Check if module is connected
+  if (status == true)
+  {    
+    USB.print(F("3. WiFi is connected OK"));
+
+    // 3.1. http request
+    error = WIFI_PRO.post(body); 
+
+    // check response
+    if (error == 0)
+    {
+      USB.print(F("3.1. HTTP POST OK. "));
+      USB.print(F("HTTP Time from OFF state (ms):"));
+      USB.println(millis()-previous);
+      
+      USB.print(F("\nServer answer:"));
+      USB.println(WIFI_PRO._buffer, WIFI_PRO._length);
+    }
+    else
+    {
+      USB.println(F("3.1. Error calling 'post' function"));
+      WIFI_PRO.printErrorCode();
+    }
+  }
+  else
+  {
+    USB.print(F("3. WiFi is connected ERROR"));
+    USB.print(F(" Time(ms):"));
+    USB.println(millis()-previous);
+  }
+
+
+  //////////////////////////////////////////////////
+  // 4. Switch OFF
+  //////////////////////////////////////////////////  
+  WIFI_PRO.OFF(SOCKET1);
+  USB.println(F("4. WiFi switched OFF\n\n"));
+
+  return error;
+}
+
