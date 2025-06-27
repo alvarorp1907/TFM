@@ -29,6 +29,8 @@
 #include <WaspFrame.h>
 #include <WaspOneWire.h>
 #include <math.h>
+#include <string.h>
+#include <stdlib.h>
 
 //Defines and macros
 #define PH_BUFFER_LEN  10
@@ -39,13 +41,14 @@
 #define SENSOR_TEMPERATURE_ID 70
 #define SENSOR_PH_ID 71
 #define SENSOR_TURBIDITY_ID 72
-
+#define DELAY 60000 //ms
 
 //functions definition
 static float getPh(void);
 static float getTemperature(void);
 static int getTurbidity(void);
 static void sendMeasuresToGateway(float temperature, float ph, int turbidity);
+static getDataFields(char * frame);
 
 // Destination MAC address
 static char RX_ADDRESS[] = "0013A200417EE50B";
@@ -93,8 +96,8 @@ void loop()
 
   //desabling 5V pin to save battery
   PWR.setSensorPower(SENS_5V, SENS_OFF);
-  //wait for five seconds
-  delay(10000);
+  //wait
+  delay(DELAY);
   //enabling battery and wait of 1s to ensure 
   //a stable power signal
   PWR.setSensorPower(SENS_5V, SENS_ON);

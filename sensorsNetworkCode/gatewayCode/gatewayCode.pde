@@ -28,19 +28,50 @@
 #include <WaspXBee802.h>
 #include <WaspWIFI_PRO.h>
 
+//defines 
+
+//server
 #define SERVER_IP "192.168.1.44"
 #define SERVER_PORT "5000"
 #define SERVER_PROTOCOL "http"
 #define SERVER_URL "/"
-#define N_MEASURES_TO_SERVER 5
+#define SEND_TELEMETRY_CMD "SEND_TELEMETRY"
+//rx buffer
+#define N_MEASURES_TO_SERVER 2
+#define N_BYTES_PER_RX_FRAME 66 + 4 //adding 4 extra byte to avoid overflow
+#define LEN_RX_BUFFER N_MEASURES_TO_SERVER*N_BYTES_PER_RX_FRAME
+
+//frame fields
+#define N_NAME_FIELD 2
+#define N_SEQUENCE_FIELD 3
+#define N_TEMPERATURE_FIELD 4
+#define N_PH_FIELD 5
+#define N_TURBIDITY_FIELD 6
+
+//types
+typedef struct{
+  char * waterTemperature;
+  char * ph;
+  char * turbidity;
+  char * name;
+  char * seq;
+}dataField_t;
 
 //function definitions
 static int sendTelemetryToServer(void);
+static dataField_t getDataFields(uint8_t * frame);
 
-// define variable
-int error;
+//local variables
+static int error;
+static char rxBuffer [LEN_RX_BUFFER] ;
+static char body[] = "SEND_TELEMETRY aassaas asasas";
 
-char body[] = "SEND_TELEMETRY aassaas asasas";
+// choose TCP server settings
+///////////////////////////////////////
+//char HOST[]        = "172.24.98.188";
+//char REMOTE_PORT[] = "12345";
+//char LOCAL_PORT[]  = "3000";
+///////////////////////////////////////
 
 void setup()
 {
@@ -52,12 +83,19 @@ void setup()
 
   //init WI-FI
   WIFI_PRO.ON(SOCKET1);
+
+  //initializing rx buffer
+  memset(rxBuffer,0,sizeof(rxBuffer));
 }
 
 
 void loop()
 { 
   static int receivedMeasures = 0;
+  static int posBuf = 0;
+  char tempBuf [80];
+  dataField_t dataFields = {0};
+  
   // receive XBee packet (wait for 10 seconds)
   error = xbee802.receivePacketTimeout(2000);
   
@@ -66,23 +104,46 @@ void loop()
     USB.println(F("New measure received from sensor mote!"));
 
     // Show data stored in '_payload' buffer indicated by '_length'
-    USB.print(F("Data: "));  
+    USB.print(F("Received data from IEE802.15.4: "));  
     USB.println( xbee802._payload, xbee802._length);
     
     // Show data stored in '_payload' buffer indicated by '_length'
     USB.print(F("Length: "));  
     USB.println( xbee802._length,DEC);
 
+    //processing received frame
+    dataFields = getDataFields(xbee802._payload);
+    memset(tempBuf,0,sizeof(tempBuf));
+    
+    if (receivedMeasures == 0){
+      sprintf(tempBuf,"%s %s %s %s %s %s |",SEND_TELEMETRY_CMD,dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
+    }else{
+      sprintf(tempBuf,"%s %s %s %s %s |",dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
+    }
+    USB.println(tempBuf);
+    //stroring in buffer
+    memcpy(&rxBuffer[posBuf], tempBuf, strlen(tempBuf));
+    posBuf = posBuf + strlen(tempBuf);
+    USB.println(rxBuffer);
+    
+    // incrementing counter of collected measures
     receivedMeasures = receivedMeasures + 1;
-
-    //send collected measures to HTTP server each N_MEASURES_TO_SERVER measures received
+    USB.println(receivedMeasures);
+   
+     //send collected measures to HTTP server each N_MEASURES_TO_SERVER measures received
     if (receivedMeasures == N_MEASURES_TO_SERVER)
     {
-      receivedMeasures = 0;
+     receivedMeasures = 0;
       
-      //send collected measures to HTTP server
-      USB.print(F("Sending pending measures to HTTP server!"));
-      sendTelemetryToServer();
+     //send collected measures to HTTP server
+     USB.print(F("Sending pending measures to HTTP server!"));
+     USB.print(rxBuffer);
+     sendTelemetryToServer();
+
+     //erasing buffer
+     memset(rxBuffer,0,sizeof(rxBuffer));
+     posBuf = 0;
+      
     }
   }
 }
@@ -135,7 +196,7 @@ static int sendTelemetryToServer(void){
     USB.print(F("3. WiFi is connected OK"));
 
     // 3.1. http request
-    error = WIFI_PRO.post(body); 
+    error = WIFI_PRO.post(rxBuffer); 
 
     // check response
     if (error == 0)
@@ -168,5 +229,35 @@ static int sendTelemetryToServer(void){
   USB.println(F("4. WiFi switched OFF\n\n"));
 
   return error;
+}
+
+static dataField_t getDataFields(uint8_t * frame){
+  
+  char * token;
+  int nField = 0;
+  dataField_t dataFields = {0};
+  
+  token = strtok((char *) frame, "#");
+
+  while (token != NULL) {
+    
+    if (nField == N_NAME_FIELD){
+      dataFields.name = token;
+    }else if (nField == N_SEQUENCE_FIELD){
+      dataFields.seq = token;
+    }else if (nField == N_TEMPERATURE_FIELD){
+      dataFields.waterTemperature = token;
+    }else if (nField == N_PH_FIELD){
+      dataFields.ph = token;
+    }else if (nField == N_TURBIDITY_FIELD){
+      dataFields.turbidity = token;
+    }
+    
+    token = strtok(NULL, "#");
+    nField++;
+  }
+
+  USB.println(F("Sale"));
+  return dataFields;
 }
 
