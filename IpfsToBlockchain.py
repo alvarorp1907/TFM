@@ -136,6 +136,7 @@ class HandlerServerTCP:
         else:
             print(f"Error invoking the chaincode in Hyperledger Fabric Blockchain: {res}")
             return BLOCKCHAIN_OPERATION_FAILED
+        print()
             
             
     @staticmethod
