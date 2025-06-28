@@ -91,34 +91,29 @@ func (c *CIDContract) GetInfoDevice(ctx contractapi.TransactionContextInterface,
 }
 
 //function that returns all assets found in world state
-func (c *CIDContract) GetAllAssets(ctx contractapi.TransactionContextInterface) ([]map[string]interface{}, error) {
+func (c *CIDContract) GetAllAssets(ctx contractapi.TransactionContextInterface) (string, error) {
 	// range query with empty string for startKey and endKey does an
 	// open-ended query of all assets in the chaincode namespace.
 	resultsIterator, err := ctx.GetStub().GetStateByRange("", "")
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	defer resultsIterator.Close()
 
-	var assets []map[string]interface{}
+	var resultString string
 
 	for resultsIterator.HasNext() {
-		var asset map[string]interface{}
 		
 		queryResponse, err := resultsIterator.Next()
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 
-		err = json.Unmarshal(queryResponse.Value, &asset)
-		if err != nil {
-			return nil, err
-		}
+		resultString += fmt.Sprintf("%s\n\r", string(queryResponse.Value))
 
-		assets = append(assets, asset)
 	}
 
-	return assets, nil
+	return resultString, nil
 }
 
 //function that returns true when asset with given fileExist exists in world state, otherwise false

@@ -10,6 +10,8 @@ from daemonClass import daemon
 import datetime
 import socket
 import re
+import http.server
+import ssl
 
 #################### constants ####################
 
@@ -22,6 +24,8 @@ DIR_CERT_CA_ORG1 = f"{DIR_HYPERLEDGER_NET}/organizations/peerOrganizations/org1.
 DIR_CERT_CA_ORG2 = f"{DIR_HYPERLEDGER_NET}/organizations/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt"
 DIR_CERT_CA_ORDERER =f"{DIR_HYPERLEDGER_NET}/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem"
 DIR_MSP_PEER_ORG1_CONF = f"{DIR_HYPERLEDGER_NET}/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp"
+
+DIR_TARGER_FOLDER_MFS = "/WaterTelemetry"
 
 #Hyperledger Fabric information
 CHAINCODE_NAME = "chaincode"
@@ -37,11 +41,24 @@ QUERY_CN_BASE_CMD = f"peer chaincode query -C {CHAINCODE_CHANNEL} -n {CHAINCODE_
 
 CID_CODE_ERROR = "-1"
 
-#TCP server information
+#project directory where certs are stored
+CERTS_DIR = "/home/alvarorp19/scriptsPyTFM/"
+#certificates directories
+CERT_SERVER_DIR = "./serverCertificates+/"
+CERT_CA_DIR = "./CAcertificates/"
+
+#HTTPS server information
+LOCALHOST = "192.168.1.44"
 SERVER_MAX_NUMBER_CONNECTIONS = 5
-SERVER_PORT = 4000
-SERVER_HOST = "0.0.0.0"
+SERVER_PORT = 5000
 RX_BUFFER_LEN = 1024
+
+BLOCKCHAIN_OPERATION_COMPLETED = "SUCESS"
+BLOCKCHAIN_OPERATION_FAILED = "FAILURE"
+
+OPERATION_COMPLETED_STATUS_CODE = 200
+OPERATION_FAILED_STATUS_CODE = 500
+
 
 #################### variables and structures ####################
 
@@ -57,67 +74,99 @@ HyperledgerEnvVar = {"FABRIC_CFG_PATH" : f"{DIR_HYPERLEDGER_FABRIC_SAMPLES}/conf
                      "CORE_PEER_TLS_ROOTCERT_FILE" : DIR_CERT_CA_ORG1,
                      "CORE_PEER_MSPCONFIGPATH" : DIR_MSP_PEER_ORG1_CONF,
                      "CORE_PEER_ADDRESS": "localhost:7051"}
+                     
+                     
+####################            Functions               ####################
 
-
-#################### MonitoringForIpfsHyperledger class ####################
-
-
-class MonitoringForIpfsHyperledger(daemon):
+def get_ssl_context(certfile, keyfile):
+    """
+    Function to initialize the SSL context.
     
-    #gateway events
-    GATEWAY_STORE_CID_EVENT = "STORE_CID"
-
-    def __init__(self,pidFile,debugLevel):
-        """
-        Class constructor
-        """
-        super().__init__(pidFile,debugLevel) #constructor
+    Args:
+        certfile : server's certificate
+        keyfile : server's private key 
         
-        self.server = None #TCP server socket 
-        self.gateway = None #TCP gateway socket
-        
-        self.gatewayConfig = None
-        
-        #getaway event dictionary:  
-        #key = command name | 1st value: command pattern , 2nd value : associated function pointer  
-        self.gatewayEventDict = {self.GATEWAY_STORE_CID_EVENT : [fr"{self.GATEWAY_STORE_CID_EVENT} ([a-zA-Z0-9_]+) ([a-zA-Z0-9_]+)", self.uploadCIDtoHyperledger]}
-        
-        
+    Return:
+        Context of the SSL connection
+    """
+    certfile = CERT_SERVER_DIR + certfile
+    keyfile = CERT_SERVER_DIR + keyfile
     
-    def uploadFileToIPFS(self,file):
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(certfile, keyfile)
+    context.set_ciphers("@SECLEVEL=1:ALL")
+    
+    #enabling client certificate mode (mTLS mode)
+    #client must present it certificate to establish
+    #a communication with the HTTPS server
+    context.verify_mode = ssl.CERT_REQUIRED
+    #Loading CA certificate
+    context.load_verify_locations(cafile=CERT_CA_DIR + "ca.cert")
+    
+    return context
+    
+    
+    
+def initDaemonIpfs():
+    """
+    This function initializes the local IPFS deamon.
+    
+    Args:
+        None.
+        
+    Return:
+        None
+        
+    Note:
+        This functions lauch the local IPFS deamon using a background process
+        to not blocking the main process.
+    """
+    processIPFS = subprocess.Popen(['ipfs', 'daemon'])
+    exitCode = processIPFS.wait()
+    print(f"IPFS process code: {exitCode}")
+    
+    
+    
+####################     MyHandlerForRequestHTTPS class     ####################
+
+class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
+
+    ###static methods ###
+   
+   
+   
+    @staticmethod
+    def uploadFileToHyperledgerFabric(fileName,cid,timestamp):
         """
         Def:
-            Function to upload a file to IPFS.
+            Function to upload a file to Hyperledger Fabric Blockchain.
         Args:
             targetFile : full path of the file.
+            cid : IPFS CID
+            timeStamp : Unix time
         Return:
-            Tuple containing the request status and IPFS CID obtained.
+            upload status
         Note:
             None
         """
-        retStatus = True
-        fileIPFSCID = CID_CODE_ERROR
-        fileIPFSJson = {'fileIPFS': open(file, 'rb')}
+        #formatting unix time
+        timestamp = datetime.datetime.fromtimestamp(timestamp)
+        fmtTimestamp = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        #invoking chaincode
+        res = subprocess.run(HyperledgerCmd["AddNewFileIPFS"].format(fileName,cid,fmtTimestamp), capture_output=True, text=True, shell=True)
+        cleanRes = res.stderr.strip(' \n\r')
+        transactionStatusCode = cleanRes[-3:]
         
-        response = requests.post('http://127.0.0.1:5001/api/v0/add', files=fileIPFSJson)
-    
-        #checking respose status from local API server
-        if response.status_code == 200:
-            payload = response.json()
-            fileIPFSCID = payload['Hash']
-            print(f"File named as {file} successfully uploaded to IPFS.")
-            print(f"{file} CID: {fileIPFSCID}")
-            print(f"Public URL: https://ipfs.io/ipfs/{fileIPFSCID}")
+        if (transactionStatusCode == "200"):
+            print(f"CID '{cid}' successfully stored in Hyperledger Fabric Blockchain")
+            return BLOCKCHAIN_OPERATION_COMPLETED
         else:
-            print(f"File name as {file} cannot be uploaded to IPFS")
-            print(f"Error code {response.status_code} received from local API server")
-            retStatus = False
-        
-        return retStatus,fileIPFSCID
-    
-    
-    
-    def isIPFfileStoredInHyperledger(self,cidToCheck):
+            print(f"Error invoking the chaincode in Hyperledger Fabric Blockchain: {res}")
+            return BLOCKCHAIN_OPERATION_FAILED
+            
+            
+    @staticmethod
+    def isIPFfileStoredInHyperledger(cidToCheck):
         """
         Def:
             Function to check if the file specified at first parameter
@@ -142,34 +191,330 @@ class MonitoringForIpfsHyperledger(daemon):
                 ret = True
                 
         return ret
-    
-    
-    
-    def uploadFileToHyperledgerFabric(self,fileName,cid,timestamp):
+        
+        
+    @staticmethod
+    def uploadCIDtoHyperledger(cid,filename):
         """
-        Def:
-            Function to upload a file to Hyperledger Fabric Blockchain.
+        Upload file to Hyperledger Fabric.
+        
         Args:
-            targetFile : full path of the file.
-            cid : IPFS CID
-            timeStamp : Unix time
+            cid : IPFS CID to upload.
+            filename : filename
+            
         Return:
-            True if operation is successfully done otherwise False.
-        Note:
+            Response message to be sent to the client as payload.
+        """
+        unixTime = time.time()
+        operationStatus = ""
+        
+        #checking if we need to summit modifications to IPFS and blockchain
+        isCidStored = MyHandlerForRequestHTTPS.isIPFfileStoredInHyperledger(cid)
+        if isCidStored == False:
+            #upload IPFS file to Hyperledger Fabric
+            print(f"Uploading info from file '{filename}' to Hyperledger Fabric!")
+            operationStatus = MyHandlerForRequestHTTPS.uploadFileToHyperledgerFabric(filename,cid,unixTime)
+        else:
+            print(f"CID '{cid} has been previously stored in Hyperledger'")
+            operationStatus = BLOCKCHAIN_OPERATION_FAILED
+        
+        return operationStatus
+
+    
+    
+    @staticmethod
+    def uploadFileToIPFS(file):
+            """
+            Def:
+                Function to upload a file to IPFS.
+            Args:
+                file :  filename.
+            Return:
+                Tuple containing the request status and IPFS CID obtained.
+            Note:
+                None
+            """
+            fileIPFSCID = CID_CODE_ERROR
+            fileIPFSJson = {'fileIPFS': open(file, 'rb')}
+            
+            response = requests.post('http://127.0.0.1:5001/api/v0/add', files=fileIPFSJson)
+        
+            #checking respose status from local API server
+            if response.status_code == 200:
+                payload = response.json()
+                fileIPFSCID = payload['Hash']
+                print(f"File named as {file} successfully uploaded to IPFS.")
+                print(f"{file} CID: {fileIPFSCID}")
+                print(f"Public URL: https://ipfs.io/ipfs/{fileIPFSCID}")
+            else:
+                print(f"File name as {file} cannot be uploaded to IPFS")
+                print(f"Error code {response.status_code} received from local API server")
+                raise Exception(f'{response.text}')
+                
+            return fileIPFSCID
+    
+    
+
+    @staticmethod
+    def copyIPFStoMfs(cid, mfsPath):
+        """
+        function to copy a IPFS file to the local MFS.
+        
+        Args:
+            cid : cid to be copied.
+            mfsPath : path of the folder in MFS.
+            
+        Return:
             None
         """
-        #formatting unix time
-        timestamp = datetime.datetime.fromtimestamp(timestamp)
-        fmtTimestamp = timestamp.strftime('%Y-%m-%d %H:%M:%S')
-        #invoking chaincode
-        res = subprocess.run(HyperledgerCmd["AddNewFileIPFS"].format(fileName,cid,fmtTimestamp), capture_output=True, text=True, shell=True)
-        cleanRes = res.stderr.strip(' \n\r')
-        transactionStatusCode = cleanRes[-3:]
-        
-        if (transactionStatusCode == "200"):
-            print(f"CID '{cid}' successfully stored in Hyperledger Fabric Blockchain")
+        response = requests.post('http://127.0.0.1:5001/api/v0/files/cp', params={
+            'arg': [f'/ipfs/{cid}',mfsPath],
+            'parents': 'true'})
+                                
+        if response.status_code == 200:
+            print(f"CID {cid} copied to MFS {mfsPath}")
         else:
-            print(f"Error invoking the chaincode in Hyperledger Fabric Blockchain: {res}")
+            print(f"Error {response.status_code} : trying to copy CID {cid} to MFS {mfsPath}")
+            raise Exception(f'{response.text}')
+        
+        
+    
+    @staticmethod
+    def updateIPNS(cid):
+        """
+        Function to update the pointer of IPNS.
+        
+        Args :
+            cid : cid to be published.
+            
+        Return:
+            None.
+        """
+        response = requests.post('http://127.0.0.1:5001/api/v0/name/publish', params={'arg': f'/ipfs/{cid}'})
+        
+        if response.status_code == 200:
+            ipnsName = response.json()['Name']
+            print(f'URL IPNS: https://ipfs.io/ipns/{ipnsName}')
+            return ipnsName
+        else:
+            print(f'Error trying to publish on IPNS: {response.text}')
+            raise Exception(f'{response.text}')
+    
+    
+    
+    @staticmethod
+    def MFSfolderExistsIPFS(folderPath):
+        """
+        This function creates the target dir in MFS if the dir 
+        doesn't exist.
+        
+        Args:
+            folderPath : target dir.
+            
+        Return:
+            None.
+        """
+        response = requests.post('http://127.0.0.1:5001/api/v0/files/stat', params={'arg': folderPath})
+        
+        if response.status_code != 200:
+            #the folder doesn't exist so we need to create it
+            print(f'Creating folder MFS: {folderPath}')
+            response = requests.post('http://127.0.0.1:5001/api/v0/files/mkdir', params={'arg': folderPath, 'parents': 'true'})
+            
+            if response.status_code != 200:
+                print(f"Error while creaing folder {folderPath} in IPFS MFS")
+                raise Exception(f'{response.text}')
+        
+
+
+    @staticmethod  
+    def getMFSfolderCID(folderPath):
+        """
+        Function to get the CID of the MFS folder.
+        
+        Args:
+            folderPath : MFS path.
+            
+        Return:
+            The CID of th e MFS folder.
+        """
+        response = requests.post('http://127.0.0.1:5001/api/v0/files/stat', params={'arg': folderPath})
+        
+        if response.status_code == 200:
+            foldercid = response.json()['Hash']
+            print(f'Actual CID of the target folder in MFS {folderPath}: {foldercid}')
+            return foldercid
+        else:
+            print(f"Error {response.status_code} getting folder's CID at MFS")
+            raise Exception(f'{response.text}')
+
+    
+    
+    @staticmethod
+    def routineIPFS(filename):
+        """
+        IPFS routine that will be executed every time that 
+        gateway send telemetry to the HTPPS server.
+        
+        The routine is composed by several steps:
+        1 -> check that the mutable folder exists at local MFS.
+        2 -> Upload file to IPFS.
+        3 -> Copy uploaded file to folder at MFS.
+        4 -> Get CID of the folder.
+        5 -> publish CID in IPNS
+        
+        Args:
+            filename : filename to upload at local IPFS node.
+            
+        Return:
+            operation status code and new file CID
+        """
+        retStatus = True
+        fileCid = ""
+        newfolderCid = ""
+        filePathInMFS = DIR_TARGER_FOLDER_MFS + '/' + filename
+        
+        try:
+            MyHandlerForRequestHTTPS.MFSfolderExistsIPFS(DIR_TARGER_FOLDER_MFS)
+            fileCid = MyHandlerForRequestHTTPS.uploadFileToIPFS(filename)
+            MyHandlerForRequestHTTPS.copyIPFStoMfs(fileCid,filePathInMFS)
+            newfolderCid = MyHandlerForRequestHTTPS.getMFSfolderCID(DIR_TARGER_FOLDER_MFS)
+            MyHandlerForRequestHTTPS.updateIPNS(newfolderCid)
+        except Exception as e:
+            print(e)
+            retStatus = False
+        
+        return retStatus, fileCid
+    
+    
+    
+    @staticmethod
+    def uploadTelemetryBlockchainAndIPFS(cmdParam):
+        """
+        Function to upload the telemetry received from the client.
+        
+        Args:
+            cmdParam : command parameters
+            
+        Return:
+            Response message to be sent to the client as payload.
+        """
+        telemetryToBeStored = cmdParam[0]
+        print(f"TELEMETRY -> {telemetryToBeStored}")
+        operationStatus = BLOCKCHAIN_OPERATION_FAILED
+        unixTime = int(time.time())
+        fileName = f"telemetry-{unixTime}.txt"
+        cid = ""
+        statusIpfs = False
+        
+        #create a temporal file to store telemetry
+        with open(fileName, 'w') as file:
+            datos = file.write(telemetryToBeStored)
+        #upload to IPFS
+        statusIpfs, cid = MyHandlerForRequestHTTPS.routineIPFS(fileName)
+        #upload to blockchain
+        if statusIpfs:
+            operationStatus = MyHandlerForRequestHTTPS.uploadCIDtoHyperledger(cid,fileName)
+        #delete temporal file
+        os.remove(fileName)
+        #print("Temperal file {fileName} deleted!")
+        return operationStatus
+        
+        
+
+    ###static defines and variables###
+    
+    GATEWAY_STORE_CID_EVENT = "STORE_CID"
+    GATEWAY_SEND_TELEMTRY_EVENT = "SEND_TELEMETRY"
+    
+    #getaway event dictionary:  
+    #key = command name | 1st value: command pattern , 2nd value : associated function pointer
+    gatewayEventDict = {GATEWAY_SEND_TELEMTRY_EVENT : [fr"^{GATEWAY_SEND_TELEMTRY_EVENT}\s+(.*)$",uploadTelemetryBlockchainAndIPFS]}
+    
+    
+    
+    ###methods###
+    
+    
+    
+    def processRequest(self,payload):
+        """
+        Process the payload from client.
+        
+        Args:
+            None.
+            
+        Return:
+            None.
+        """
+        print(f"RECV -> {payload}")
+        cmdNameRcv = payload.split()[0]
+        #print(f"NAME CMD -> {cmdNameRcv}")
+        cmdParamsTuple = tuple()
+        response = BLOCKCHAIN_OPERATION_FAILED
+        
+        for cmdName, value in MyHandlerForRequestHTTPS.gatewayEventDict.items():
+            if cmdNameRcv == cmdName:
+                #check received msg structure
+                pattern = value[0]
+                match = re.search(pattern,payload)
+                if match:
+                    cmdParamsTuple = match.groups()
+                    ptrFunction = value[1]
+                    response = ptrFunction(cmdParamsTuple)
+                    break
+                    
+        return response
+    
+    
+    ####HTTP methods####
+    
+    
+    
+    def do_POST(self):
+        """
+        POST method routine to be executed once a POST request
+        has been received.
+        
+        Args:
+            None
+            
+        Return:
+            None
+        """
+        responsePayload = ""
+        
+        content_length = int(self.headers["Content-Length"])
+        post_data = self.rfile.read(content_length)
+        postDecodedData = post_data.decode("utf-8")
+        responsePayload = self.processRequest(postDecodedData)
+        #sending a response to client
+        if responsePayload == BLOCKCHAIN_OPERATION_COMPLETED:
+            self.send_response(OPERATION_COMPLETED_STATUS_CODE)
+        else:
+            self.send_response(OPERATION_FAILED_STATUS_CODE)
+        self.send_header('Content-type', 'text/plain')  # Tipo de contenido
+        self.end_headers()
+        self.wfile.write(responsePayload.encode('utf-8'))
+
+
+
+#################### MonitoringForIpfsHyperledger class ####################
+
+
+class MonitoringForIpfsHyperledger(daemon):
+
+    def __init__(self,pidFile,debugLevel):
+        """
+        Class constructor
+        """
+        super().__init__(pidFile,debugLevel) #constructor
+        
+        self.server = None #TCP server socket 
+        self.gateway = None #TCP gateway socket
+        
+        self.gatewayConfig = None  
+
     
     
     def getGatewayConfigFromHyperledgerFabric(self):
@@ -198,7 +543,7 @@ class MonitoringForIpfsHyperledger(daemon):
         
         
         
-    def waitUntilGatewayIsConnected(self):
+    def initHTTPSserver(self):
         """
         Function that waits until a TCP connection is established with the target gateway.
         
@@ -211,146 +556,14 @@ class MonitoringForIpfsHyperledger(daemon):
         Note:
             This function reject all clients except the target gateway device. 
         """
-        gatewayIsConnected = False
-        gatewayIp =  self.gatewayConfig["ip"]
-        
-        #print(f"Gateway IP {gatewayIp}")
-        
-        #creating a TCP socket
-        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        #setting options
-        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        #binding IP with port
-        self.server.bind((SERVER_HOST, SERVER_PORT))
-        #waiting for connection
-        self.server.listen(SERVER_MAX_NUMBER_CONNECTIONS)
-    
-        while(not gatewayIsConnected):
-            print("Waiting until gateway is connected...")
-            #program is blocked here until a connection is established
-            clientSocket, clientAddress = self.server.accept()
-            clientIp , clientPort = clientAddress
-            #checking client
-            if clientIp == gatewayIp:
-                gatewayIsConnected = True
-                self.gateway = clientSocket
-            else:
-                print("No legitime connection, closing connection...")
-                clientSocket.close()
-        #once the target connection has been established,
-        #can stop listening server port
-        print("Connection established with gateway!")
-        self.server.close()
-
-
-
-    def isSocketClosed(self):
-      """
-      This function detects whether the gateway socket is closed or not.
-      
-      Args:
-          None
-          
-      Return:
-          Bool
-      """
-      try:
-          # this will try to read bytes without blocking and also without removing them from buffer (peek only)
-          data = self.gateway.recv(16, socket.MSG_DONTWAIT | socket.MSG_PEEK)
-          if len(data) == 0:
-              return True
-      except BlockingIOError:
-          return False  # socket is open and reading from it would block
-      except ConnectionResetError:
-          return True  # socket was closed for some other reason
-      except Exception as e:
-          print("unexpected exception when checking if a socket is closed")
-          return False
-      return False          
-   
-
-
-    def uploadCIDtoHyperledger(self,cmdArgs):
-        """
-        Upload file to Hyperledger Fabric.
-        
-        Args:
-            cid : IPFS CID to upload.
-            filename : filename
-            
-        Return:
-            None
-        """
-        cid = cmdArgs[0]
-        filename = cmdArgs[1]
-        unixTime = time.time()
-        
-        #checking if we need to summit modifications to IPFS and blockchain
-        isCidStored = self.isIPFfileStoredInHyperledger(cid)
-        if isCidStored == False:
-            #upload IPFS file to Hyperledger Fabric
-            print(f"Uploading info from file '{filename}' to Hyperledger Fabric!")
-            self.uploadFileToHyperledgerFabric(filename,cid,unixTime)
-        else:
-            print(f"CID '{cid} has been previously stored in Hyperledger'")
-    
-    
-    
-    def filesMonitoring(self):
-        """
-        Def:
-            Function to monitor if a new file has been added in the directory where target
-            files must be stored
-        Args:
-            Void 
-        Return:
-            Void   
-        Note:
-            This function is executed in a background process
-        """
-        #isFirstIteration = True
-        #lastFileModified = ""#path of the last file modified
-        #lastTimeStamp = 0 #timeStamp of the last file modified
-        #targetDir = Path(DIR_FILES)
-        
-        #set environment variables before executing any operation in Hyperledger
-        for environVarName, environVarValue in HyperledgerEnvVar.items():
-            os.environ[environVarName] = environVarValue
-            
-        #getting gateway info stored in Hyperledger Fabric
-        self.gatewayConfig = self.getGatewayConfigFromHyperledgerFabric()
-        
-        #waiting gateway connection
-        self.waitUntilGatewayIsConnected()
-        
-        while True:
-            
-            #wait until some gateway event arrives
-            rawData = self.gateway.recv(RX_BUFFER_LEN)
-            recvData = rawData.decode()
-            
-            #verify if gateway connection still open
-            isConnectionClosed = self.isSocketClosed()
-            
-            if isConnectionClosed:#closed
-                self.waitUntilGatewayIsConnected()
-            else:#open
-              #processing received data from gateway
-              print(f"RECV -> {recvData}")
-              cmdNameRcv = recvData.split()[0]
-              cmdParamsTuple = tuple()
-              
-              for cmdName, value in self.gatewayEventDict.items():
-                  if cmdNameRcv == cmdName:
-                      #check received msg structure
-                      pattern = value[0]
-                      match = re.search(pattern,recvData)
-                      if match:
-                        cmdParamsTuple = match.groups()
-                        print(cmdParamsTuple)
-                        ptrFunction = value[1]
-                        ptrFunction(cmdParamsTuple)
-                      break
+        server_address = (LOCALHOST, SERVER_PORT)
+        httpd = http.server.HTTPServer(server_address, MyHandlerForRequestHTTPS)
+  
+        context = get_ssl_context("server.cert", "server.key")
+        httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+  
+        print(f"HTTPS server running in {server_address}")
+        httpd.serve_forever()
     
     
     
@@ -365,7 +578,13 @@ class MonitoringForIpfsHyperledger(daemon):
         Note:
             None.
         """
-        self.filesMonitoring()
+        
+        os.chdir(CERTS_DIR)
+        #set environment variables before executing any operation in Hyperledger
+        for environVarName, environVarValue in HyperledgerEnvVar.items():
+            os.environ[environVarName] = environVarValue
+        #init HTTPS server
+        self.initHTTPSserver()
 
         
      
