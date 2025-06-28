@@ -70,11 +70,12 @@ typedef struct{
 //function definitions
 static uint8_t sendTelemetryToServer(void);
 static dataField_t getDataFields(uint8_t * frame);
-static void synchronizeRTC(void);
+static uint8_t synchronizeRTC(void);
 
 //local variables
 static int error;
-static char rxBuffer [LEN_RX_BUFFER] ;
+static char rxBuffer [LEN_RX_BUFFER];
+static bool isRtcSync = false;
 
 // choose TCP server settings
 ///////////////////////////////////////
@@ -107,10 +108,9 @@ void loop()
 { 
   static int receivedMeasures = 0;
   static int posBuf = 0;
-  char tempBuf [80];
+  char tempBuf [90];
   dataField_t dataFields = {0};
-
-  USB.println(F("Waiting for data from sensor node..."));
+  uint8_t posTempBuf = 0;
   
   // receive XBee packet (wait for 10 seconds)
   error = xbee802.receivePacketTimeout(2000);
@@ -132,10 +132,22 @@ void loop()
     memset(tempBuf,0,sizeof(tempBuf));
     
     if (receivedMeasures == 0){
-      sprintf(tempBuf,"%s %s %s %s %s %s |",SEND_TELEMETRY_CMD,dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
+      sprintf(tempBuf,"%s %s %s %s %s %s ",SEND_TELEMETRY_CMD,dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
     }else{
-      sprintf(tempBuf,"%s %s %s %s %s |",dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
+      sprintf(tempBuf,"%s %s %s %s %s ",dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
     }
+    
+    posTempBuf = strlen(tempBuf);
+    
+    if (isRtcSync)
+    {
+      sprintf(&tempBuf[posTempBuf],"TIME:%s |",RTC.getTime());
+    }else{
+      sprintf(&tempBuf[posTempBuf],"TIME: not sync |");
+    }
+
+    USB.println(sizeof(tempBuf));
+    
     //stroring in buffer
     memcpy(&rxBuffer[posBuf], tempBuf, strlen(tempBuf));
     posBuf = posBuf + strlen(tempBuf);
@@ -304,21 +316,7 @@ static uint8_t sendTelemetryToServer(){
       ////////////////////////////////////////////////
       if (status == true)
       {   
-        // 3.1. Open FTP session
-        error = WIFI_PRO.setTimeFromWIFI();
-
-        // check response
-        if (error == 0)
-        {
-          USB.print(F("3. Set RTC time OK. Time:"));
-          USB.println(RTC.getTime());
-        }
-        else
-        {
-          USB.println(F("3. Error calling 'setTimeFromWIFI' function"));
-          WIFI_PRO.printErrorCode();
-          status = false;   
-        }
+        status = synchronizeRTC();
       }
       ////////////////////////////////////////////////
       // 3.5. close socket
@@ -508,21 +506,7 @@ static void InitsynchronitationTime(){
   // Check if module is connected
   if (status == true)
   {   
-    //set RTC
-    error = WIFI_PRO.setTimeFromWIFI();
-
-    // check response
-    if (error == 0)
-    {
-      USB.print(F("3. Set RTC time OK. Time:"));
-      USB.println(RTC.getTime());
-    }
-    else
-    {
-      USB.println(F("3. Error calling 'setTimeFromWIFI' function"));
-      WIFI_PRO.printErrorCode();
-      status = false;   
-    }
+    status = synchronizeRTC();
   }
 
   //////////////////////////////////////////////////
@@ -537,6 +521,31 @@ static void InitsynchronitationTime(){
   RTC.ON();
   USB.print(F("Current RTC settings:"));
   USB.println(RTC.getTime());
+  
+}
+
+static uint8_t synchronizeRTC(void){
+  uint8_t status = true;
+
+  //set RTC
+  error = WIFI_PRO.setTimeFromWIFI();
+
+  // check response
+  if (error == 0)
+  {
+    USB.print(F("3. Set RTC time OK. Time:"));
+    USB.println(RTC.getTime());
+    isRtcSync = true;
+  }
+  else
+  {
+    USB.println(F("3. Error calling 'setTimeFromWIFI' function"));
+    WIFI_PRO.printErrorCode();
+    status = false;
+    isRtcSync = false;
+  }
+
+  return status;
   
 }
 
