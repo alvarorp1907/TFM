@@ -77,13 +77,6 @@ static int error;
 static char rxBuffer [LEN_RX_BUFFER];
 static bool isRtcSync = false;
 
-// choose TCP server settings
-///////////////////////////////////////
-//char HOST[]        = "172.24.98.188";
-//char REMOTE_PORT[] = "12345";
-//char LOCAL_PORT[]  = "3000";
-///////////////////////////////////////
-
 void setup()
 {
   // init USB port
@@ -132,18 +125,18 @@ void loop()
     memset(tempBuf,0,sizeof(tempBuf));
     
     if (receivedMeasures == 0){
-      sprintf(tempBuf,"%s %s %s %s %s %s ",SEND_TELEMETRY_CMD,dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
+      sprintf(tempBuf,"%s NAME:%s SEQ:%s %s C %s %s %%",SEND_TELEMETRY_CMD,dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
     }else{
-      sprintf(tempBuf,"%s %s %s %s %s ",dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
+      sprintf(tempBuf,"NAME:%s SEQ:%s C %s %s %s%%",dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
     }
     
     posTempBuf = strlen(tempBuf);
     
     if (isRtcSync)
     {
-      sprintf(&tempBuf[posTempBuf],"TIME:%s |",RTC.getTime());
+      sprintf(&tempBuf[posTempBuf],"TIME:%s \n\r",RTC.getTime());
     }else{
-      sprintf(&tempBuf[posTempBuf],"TIME: not sync |");
+      sprintf(&tempBuf[posTempBuf],"TIME: not sync yet \n\r");
     }
 
     USB.println(sizeof(tempBuf));
@@ -273,12 +266,6 @@ static uint8_t sendTelemetryToServer(){
       // 3.2. send data
       ////////////////////////////////////////////////
       error = WIFI_PRO.send( socket_handle, rxBuffer);
-      
-      /* BINARY SENDING
-      uint8_t data[] = {0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37};
-      uint16_t size = 7
-      error = WIFI_PRO.send( socket_handle, data, size);
-      */
 
       // check response
       if (error == 0)
@@ -542,7 +529,6 @@ static uint8_t synchronizeRTC(void){
     USB.println(F("3. Error calling 'setTimeFromWIFI' function"));
     WIFI_PRO.printErrorCode();
     status = false;
-    isRtcSync = false;
   }
 
   return status;
