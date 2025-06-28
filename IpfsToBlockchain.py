@@ -431,12 +431,14 @@ class HandlerServerTCP:
             if cmdNameRcv == cmdName:
                 #check received msg structure
                 pattern = value[0]
-                match = re.search(pattern,payload)
+                match = re.search(pattern,payload, re.DOTALL)
                 if match:
                     cmdParamsTuple = match.groups()
                     ptrFunction = value[1]
                     response = ptrFunction(cmdParamsTuple)
                     break
+                else:
+                    print(f"command sent by gateway doesn't match the pattern for the command '{cmdName}'")
                     
         return response
 
@@ -486,31 +488,6 @@ class MonitoringForIpfsHyperledger(daemon):
             sys.exit(2)
         
         
-        
-        
-    # def initTCPserver(self):
-        # """
-        # Function that waits until a TCP connection is established with the target gateway.
-        
-        # Args:
-            # None.
-            
-        # Return:
-            # None.
-            
-        # Note:
-            # This function reject all clients except the target gateway device. 
-        # """
-        # server_address = (LOCALHOST, SERVER_PORT)
-        # httpd = http.server.HTTPServer(server_address, HandlerServerTCP)
-  
-        # context = get_ssl_context("server.cert", "server.key")
-        # httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
-  
-        # print(f"HTTPS server running in {server_address}")
-        # httpd.serve_forever()
-        
-        
     
     def waitUntilGatewayIsConnected(self):
         """
@@ -545,6 +522,7 @@ class MonitoringForIpfsHyperledger(daemon):
         clientSocket, clientAddress = self.server.accept()
         clientIp , clientPort = clientAddress
         #checking client
+        print(f"Client IP ->{clientIp}")
         #if clientIp == gatewayIp:
         gatewayIsConnected = True
         self.gateway = clientSocket
