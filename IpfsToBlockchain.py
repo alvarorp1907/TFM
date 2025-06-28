@@ -51,13 +51,13 @@ CERT_CA_DIR = "./CAcertificates/"
 LOCALHOST = "192.168.1.44"
 SERVER_MAX_NUMBER_CONNECTIONS = 5
 SERVER_PORT = 5000
-RX_BUFFER_LEN = 1024
+RX_BUFFER_LEN = 2048
 
 BLOCKCHAIN_OPERATION_COMPLETED = "SUCESS"
 BLOCKCHAIN_OPERATION_FAILED = "FAILURE"
 
-OPERATION_COMPLETED_STATUS_CODE = 200
-OPERATION_FAILED_STATUS_CODE = 500
+OPERATION_COMPLETED_STATUS_CODE = "200"
+OPERATION_FAILED_STATUS_CODE = "500"
 
 
 #################### variables and structures ####################
@@ -77,33 +77,6 @@ HyperledgerEnvVar = {"FABRIC_CFG_PATH" : f"{DIR_HYPERLEDGER_FABRIC_SAMPLES}/conf
                      
                      
 ####################            Functions               ####################
-
-def get_ssl_context(certfile, keyfile):
-    """
-    Function to initialize the SSL context.
-    
-    Args:
-        certfile : server's certificate
-        keyfile : server's private key 
-        
-    Return:
-        Context of the SSL connection
-    """
-    certfile = CERT_SERVER_DIR + certfile
-    keyfile = CERT_SERVER_DIR + keyfile
-    
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(certfile, keyfile)
-    context.set_ciphers("@SECLEVEL=1:ALL")
-    
-    #enabling client certificate mode (mTLS mode)
-    #client must present it certificate to establish
-    #a communication with the HTTPS server
-    context.verify_mode = ssl.CERT_REQUIRED
-    #Loading CA certificate
-    context.load_verify_locations(cafile=CERT_CA_DIR + "ca.cert")
-    
-    return context
     
     
     
@@ -127,9 +100,9 @@ def initDaemonIpfs():
     
     
     
-####################     MyHandlerForRequestHTTPS class     ####################
+####################     HandlerServerTCP class     ####################
 
-class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
+class HandlerServerTCP:
 
     ###static methods ###
    
@@ -209,11 +182,11 @@ class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
         operationStatus = ""
         
         #checking if we need to summit modifications to IPFS and blockchain
-        isCidStored = MyHandlerForRequestHTTPS.isIPFfileStoredInHyperledger(cid)
+        isCidStored = HandlerServerTCP.isIPFfileStoredInHyperledger(cid)
         if isCidStored == False:
             #upload IPFS file to Hyperledger Fabric
             print(f"Uploading info from file '{filename}' to Hyperledger Fabric!")
-            operationStatus = MyHandlerForRequestHTTPS.uploadFileToHyperledgerFabric(filename,cid,unixTime)
+            operationStatus = HandlerServerTCP.uploadFileToHyperledgerFabric(filename,cid,unixTime)
         else:
             print(f"CID '{cid} has been previously stored in Hyperledger'")
             operationStatus = BLOCKCHAIN_OPERATION_FAILED
@@ -375,11 +348,11 @@ class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
         filePathInMFS = DIR_TARGER_FOLDER_MFS + '/' + filename
         
         try:
-            MyHandlerForRequestHTTPS.MFSfolderExistsIPFS(DIR_TARGER_FOLDER_MFS)
-            fileCid = MyHandlerForRequestHTTPS.uploadFileToIPFS(filename)
-            MyHandlerForRequestHTTPS.copyIPFStoMfs(fileCid,filePathInMFS)
-            newfolderCid = MyHandlerForRequestHTTPS.getMFSfolderCID(DIR_TARGER_FOLDER_MFS)
-            MyHandlerForRequestHTTPS.updateIPNS(newfolderCid)
+            HandlerServerTCP.MFSfolderExistsIPFS(DIR_TARGER_FOLDER_MFS)
+            fileCid = HandlerServerTCP.uploadFileToIPFS(filename)
+            HandlerServerTCP.copyIPFStoMfs(fileCid,filePathInMFS)
+            newfolderCid = HandlerServerTCP.getMFSfolderCID(DIR_TARGER_FOLDER_MFS)
+            HandlerServerTCP.updateIPNS(newfolderCid)
         except Exception as e:
             print(e)
             retStatus = False
@@ -411,10 +384,10 @@ class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
         with open(fileName, 'w') as file:
             datos = file.write(telemetryToBeStored)
         #upload to IPFS
-        statusIpfs, cid = MyHandlerForRequestHTTPS.routineIPFS(fileName)
+        statusIpfs, cid = HandlerServerTCP.routineIPFS(fileName)
         #upload to blockchain
         if statusIpfs:
-            operationStatus = MyHandlerForRequestHTTPS.uploadCIDtoHyperledger(cid,fileName)
+            operationStatus = HandlerServerTCP.uploadCIDtoHyperledger(cid,fileName)
         #delete temporal file
         os.remove(fileName)
         #print("Temperal file {fileName} deleted!")
@@ -453,7 +426,7 @@ class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
         cmdParamsTuple = tuple()
         response = BLOCKCHAIN_OPERATION_FAILED
         
-        for cmdName, value in MyHandlerForRequestHTTPS.gatewayEventDict.items():
+        for cmdName, value in HandlerServerTCP.gatewayEventDict.items():
             if cmdNameRcv == cmdName:
                 #check received msg structure
                 pattern = value[0]
@@ -465,37 +438,6 @@ class MyHandlerForRequestHTTPS(http.server.SimpleHTTPRequestHandler):
                     break
                     
         return response
-    
-    
-    ####HTTP methods####
-    
-    
-    
-    def do_POST(self):
-        """
-        POST method routine to be executed once a POST request
-        has been received.
-        
-        Args:
-            None
-            
-        Return:
-            None
-        """
-        responsePayload = ""
-        
-        content_length = int(self.headers["Content-Length"])
-        post_data = self.rfile.read(content_length)
-        postDecodedData = post_data.decode("utf-8")
-        responsePayload = self.processRequest(postDecodedData)
-        #sending a response to client
-        if responsePayload == BLOCKCHAIN_OPERATION_COMPLETED:
-            self.send_response(OPERATION_COMPLETED_STATUS_CODE)
-        else:
-            self.send_response(OPERATION_FAILED_STATUS_CODE)
-        self.send_header('Content-type', 'text/plain')  # Tipo de contenido
-        self.end_headers()
-        self.wfile.write(responsePayload.encode('utf-8'))
 
 
 
@@ -512,8 +454,10 @@ class MonitoringForIpfsHyperledger(daemon):
         
         self.server = None #TCP server socket 
         self.gateway = None #TCP gateway socket
+        #self.gatewayConfig = None
         
-        self.gatewayConfig = None  
+        self.handlerObj = HandlerServerTCP()
+        
 
     
     
@@ -543,7 +487,31 @@ class MonitoringForIpfsHyperledger(daemon):
         
         
         
-    def initHTTPSserver(self):
+    # def initTCPserver(self):
+        # """
+        # Function that waits until a TCP connection is established with the target gateway.
+        
+        # Args:
+            # None.
+            
+        # Return:
+            # None.
+            
+        # Note:
+            # This function reject all clients except the target gateway device. 
+        # """
+        # server_address = (LOCALHOST, SERVER_PORT)
+        # httpd = http.server.HTTPServer(server_address, HandlerServerTCP)
+  
+        # context = get_ssl_context("server.cert", "server.key")
+        # httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+  
+        # print(f"HTTPS server running in {server_address}")
+        # httpd.serve_forever()
+        
+        
+    
+    def waitUntilGatewayIsConnected(self):
         """
         Function that waits until a TCP connection is established with the target gateway.
         
@@ -556,17 +524,104 @@ class MonitoringForIpfsHyperledger(daemon):
         Note:
             This function reject all clients except the target gateway device. 
         """
-        server_address = (LOCALHOST, SERVER_PORT)
-        httpd = http.server.HTTPServer(server_address, MyHandlerForRequestHTTPS)
-  
-        context = get_ssl_context("server.cert", "server.key")
-        httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
-  
-        print(f"HTTPS server running in {server_address}")
-        httpd.serve_forever()
+        gatewayIsConnected = False
+        #gatewayIp =  self.gatewayConfig["ip"]
+        
+        #print(f"Gateway IP {gatewayIp}")
+        
+        #creating a TCP socket
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #setting options
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        #binding IP with port
+        self.server.bind((LOCALHOST, SERVER_PORT))
+        #waiting for connection
+        self.server.listen(SERVER_MAX_NUMBER_CONNECTIONS)
+    
+        #while(not gatewayIsConnected):
+        print("Waiting until gateway is connected...")
+        #program is blocked here until a connection is established
+        clientSocket, clientAddress = self.server.accept()
+        clientIp , clientPort = clientAddress
+        #checking client
+        #if clientIp == gatewayIp:
+        gatewayIsConnected = True
+        self.gateway = clientSocket
+        # else:
+            # print("No legitime connection, closing connection...")
+            # clientSocket.close()
+        #once the target connection has been established,
+        #can stop listening server port
+        print("Connection established with gateway!")
+        self.server.close()
     
     
     
+    def isSocketClosed(self):
+      """
+      This function detects whether the gateway socket is closed or not.
+      
+      Args:
+          None
+          
+      Return:
+          Bool
+      """
+      try:
+          # this will try to read bytes without blocking and also without removing them from buffer (peek only)
+          data = self.gateway.recv(16, socket.MSG_DONTWAIT | socket.MSG_PEEK)
+          if len(data) == 0:
+              return True
+      except BlockingIOError:
+          return False  # socket is open and reading from it would block
+      except ConnectionResetError:
+          return True  # socket was closed for some other reason
+      except Exception as e:
+          print("unexpected exception when checking if a socket is closed")
+          return False
+      return False  
+    
+    
+    
+    def serverLoop(self):
+        """
+        TCP server loop to handler client request
+        """
+        
+        #init TCP server
+        print(f"TCP server listening at ({LOCALHOST}:{SERVER_PORT})")
+        self.waitUntilGatewayIsConnected()
+        
+        while True:
+            try:
+                #wait until some gateway event arrives
+                rawData = self.gateway.recv(RX_BUFFER_LEN)
+                recvData = rawData.decode()
+                
+                #verify if gateway connection still open
+                isConnectionClosed = self.isSocketClosed()
+                
+                if isConnectionClosed:#closed
+                    self.waitUntilGatewayIsConnected()
+                else:#open
+                    #processing received data from gateway
+                    responsePayload = self.handlerObj.processRequest(recvData)
+                    statusCode = ""
+                    #sending a response to client
+                    if responsePayload == BLOCKCHAIN_OPERATION_COMPLETED:
+                        statusCode = OPERATION_COMPLETED_STATUS_CODE
+                    else:
+                        statusCode = OPERATION_FAILED_STATUS_CODE
+                    
+                    #sending response
+                    self.gateway.sendall(statusCode.encode('utf-8'))
+            except ConnectionResetError as e:
+                print(f"[EXCEPTION]: {e}")
+                #waiting for a new connection in case that an exception
+                #occurs
+                self.waitUntilGatewayIsConnected()
+        
+        
     def run(self):
         """
         Def:
@@ -580,11 +635,14 @@ class MonitoringForIpfsHyperledger(daemon):
         """
         
         os.chdir(CERTS_DIR)
+        
         #set environment variables before executing any operation in Hyperledger
         for environVarName, environVarValue in HyperledgerEnvVar.items():
             os.environ[environVarName] = environVarValue
-        #init HTTPS server
-        self.initHTTPSserver()
+        
+        #main loop
+        self.serverLoop()
+        
 
         
      
