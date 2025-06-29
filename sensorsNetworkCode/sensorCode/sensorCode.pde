@@ -41,14 +41,14 @@
 #define SENSOR_TEMPERATURE_ID 70
 #define SENSOR_PH_ID 71
 #define SENSOR_TURBIDITY_ID 72
-#define DELAY 60000 //ms
+#define DELAY 60 //s
 
 //functions definition
 static float getPh(void);
 static float getTemperature(void);
 static int getTurbidity(void);
 static void sendMeasuresToGateway(float temperature, float ph, int turbidity);
-static getDataFields(char * frame);
+static void goToSleepMode(void);
 
 // Destination MAC address
 static char RX_ADDRESS[] = "0013A200417EE50B";
@@ -94,14 +94,8 @@ void loop()
   //sending collected data to the gateway through xbee module
   sendMeasuresToGateway(temperature,ph,turbidity);
 
-  //desabling 5V pin to save battery
-  PWR.setSensorPower(SENS_5V, SENS_OFF);
-  //wait
-  delay(DELAY);
-  //enabling battery and wait of 1s to ensure 
-  //a stable power signal
-  PWR.setSensorPower(SENS_5V, SENS_ON);
-  delay(1000);
+  //entering into sleep mode
+  goToSleepMode();
   
 }
 
@@ -234,6 +228,48 @@ static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
     
     // blink red LED
     Utils.blinkRedLED();
+  }
+}
+
+static void goToSleepMode(void){
+  
+  // Setting alarm 1 in offset mode:
+  // Alarm 1 is set 15 seconds later
+  
+  char buf [15];
+  
+  sprintf(buf,"00:00:00:%d",DELAY);
+  RTC.setAlarm1(buf,RTC_OFFSET,RTC_ALM1_MODE2);
+
+//  USB.print(F("Time [Day of week, YY/MM/DD, hh:mm:ss]: "));
+//  USB.println(RTC.getTime());
+//
+//  USB.println(F("Alarm1 is set to OFFSET mode: "));
+//  USB.println(RTC.getAlarm1());
+
+  //Power off modules 
+  PWR.setSensorPower(SENS_5V, SENS_OFF);
+
+  // Setting Waspmote to Low-Power Consumption Mode
+  USB.println(F("entering into sleep mode"));
+  PWR.sleep(ALL_OFF);
+  
+  // After setting Waspmote to power-down, UART is closed, so it
+  // is necessary to open it again
+  USB.ON();
+  USB.println(F("Waspmote wake up!"));
+  RTC.ON();
+  //USB.print(F("Time: "));
+  //USB.println(RTC.getTime());
+
+  //power on modules
+  PWR.setSensorPower(SENS_5V, SENS_ON);
+  delay(1000);
+  
+  // Waspmote wakes up at '11:25:30'
+  if( intFlag & RTC_INT )
+  {
+    intFlag &= ~(RTC_INT); // Clear flag
   }
 }
 
