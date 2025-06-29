@@ -125,9 +125,9 @@ void loop()
     memset(tempBuf,0,sizeof(tempBuf));
     
     if (receivedMeasures == 0){
-      sprintf(tempBuf,"%s NAME:%s SEQ:%s %s C %s %s %%",SEND_TELEMETRY_CMD,dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
+      sprintf(tempBuf,"%s NAME:%s SEQ:%s %s C %s %s %% ",SEND_TELEMETRY_CMD,dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
     }else{
-      sprintf(tempBuf,"NAME:%s SEQ:%s C %s %s %s%%",dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
+      sprintf(tempBuf,"NAME:%s SEQ:%s C %s %s %s %% ",dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
     }
     
     posTempBuf = strlen(tempBuf);

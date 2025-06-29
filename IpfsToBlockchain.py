@@ -42,7 +42,7 @@ QUERY_CN_BASE_CMD = f"peer chaincode query -C {CHAINCODE_CHANNEL} -n {CHAINCODE_
 CID_CODE_ERROR = "-1"
 
 #project directory where certs are stored
-CERTS_DIR = "/home/alvarorp19/scriptsPyTFM/"
+PROJECT_DIR = "/home/alvarorp19/scriptsPyTFM/"
 #certificates directories
 CERT_SERVER_DIR = "./serverCertificates+/"
 CERT_CA_DIR = "./CAcertificates/"
@@ -457,7 +457,7 @@ class MonitoringForIpfsHyperledger(daemon):
         
         self.server = None #TCP server socket 
         self.gateway = None #TCP gateway socket
-        #self.gatewayConfig = None
+        self.gatewayConfig = None
         
         self.handlerObj = HandlerServerTCP()
         
@@ -503,9 +503,8 @@ class MonitoringForIpfsHyperledger(daemon):
             This function reject all clients except the target gateway device. 
         """
         gatewayIsConnected = False
-        #gatewayIp =  self.gatewayConfig["ip"]
-        
-        #print(f"Gateway IP {gatewayIp}")
+        gatewayIp =  self.gatewayConfig["ip"]
+        print(f"legitime IP -> {gatewayIp}")
         
         #creating a TCP socket
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -516,19 +515,21 @@ class MonitoringForIpfsHyperledger(daemon):
         #waiting for connection
         self.server.listen(SERVER_MAX_NUMBER_CONNECTIONS)
     
-        #while(not gatewayIsConnected):
-        print("Waiting until gateway is connected...")
-        #program is blocked here until a connection is established
-        clientSocket, clientAddress = self.server.accept()
-        clientIp , clientPort = clientAddress
-        #checking client
-        print(f"Client IP ->{clientIp}")
-        #if clientIp == gatewayIp:
-        gatewayIsConnected = True
-        self.gateway = clientSocket
-        # else:
-            # print("No legitime connection, closing connection...")
-            # clientSocket.close()
+        while(not gatewayIsConnected):
+            print("Waiting until gateway is connected...")
+            #program is blocked here until a connection is established
+            clientSocket, clientAddress = self.server.accept()
+            clientIp , clientPort = clientAddress
+            #checking client
+            print(f"Client ({clientIp}:{clientPort}) trying to establish connection")
+            if clientIp == gatewayIp:
+                gatewayIsConnected = True
+                self.gateway = clientSocket
+            else:
+                print("No legitime gateway, closing connection...")
+                #flushing rx buffer before closing connection
+                clientSocket.recv(RX_BUFFER_LEN)
+                clientSocket.close()
         #once the target connection has been established,
         #can stop listening server port
         print("Connection established with gateway!")
@@ -613,11 +614,14 @@ class MonitoringForIpfsHyperledger(daemon):
             None.
         """
         
-        os.chdir(CERTS_DIR)
+        os.chdir(PROJECT_DIR)
         
         #set environment variables before executing any operation in Hyperledger
         for environVarName, environVarValue in HyperledgerEnvVar.items():
             os.environ[environVarName] = environVarValue
+            
+        #getting gateway config
+        self.gatewayConfig = self.getGatewayConfigFromHyperledgerFabric()
         
         #main loop
         self.serverLoop()
