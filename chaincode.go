@@ -140,6 +140,66 @@ func (c *CIDContract) FileIPFSExists(ctx contractapi.TransactionContextInterface
 	return true, nil
 }
 
+//function that returns true when a device configuration exists in world state, otherwise false
+func (c *CIDContract) DeviceExists(ctx contractapi.TransactionContextInterface, deviceName string) (bool, error) {
+	assetJSON, err := ctx.GetStub().GetState(deviceName)
+	if err != nil {
+		return false, fmt.Errorf("failed to read from world state: %v", err)
+	}
+
+	if assetJSON == nil {
+		return false, nil
+	}
+
+	var asset DeviceConfig
+	err = json.Unmarshal(assetJSON, &asset)
+	if err != nil {
+		return false, err
+	}
+
+	if asset.AssetType != DEVICE_CONFIG_ASSET_TYPE {
+		return false, fmt.Errorf("the asset %s exists but it's not a device configuration!!", deviceName)
+	}
+
+	return true, nil
+}
+
+//function to change the IP address for an specific device configuration
+func (c *CIDContract) ChangeIPdevice(ctx contractapi.TransactionContextInterface, deviceName string, ip string) error {
+
+
+
+	if deviceName == "" {
+	return fmt.Errorf("Device name cannot be empty")
+	}
+
+
+	exists, err := c.DeviceExists(ctx, deviceName)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("the asset %s doesn't exists in the ledger", deviceName)
+	}
+
+	var asset * DeviceConfig
+
+	asset,err = c.GetInfoDevice(ctx,deviceName)
+
+	if err != nil {
+        return err
+    }
+	
+	asset.IP = ip
+
+	data, err := json.Marshal(asset)
+	if err != nil {
+		return err
+	}
+
+	return ctx.GetStub().PutState(deviceName, data)
+}
+
 
 //function to create a new asset in the World State containing the filename and CID stored in IPFS
 func (c *CIDContract) AddNewFileIPFS(ctx contractapi.TransactionContextInterface, fileName string, cid string, timestamp string) error {
