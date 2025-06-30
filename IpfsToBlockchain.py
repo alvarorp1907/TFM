@@ -503,8 +503,6 @@ class MonitoringForIpfsHyperledger(daemon):
             This function reject all clients except the target gateway device. 
         """
         gatewayIsConnected = False
-        gatewayIp =  self.gatewayConfig["ip"]
-        print(f"legitime IP -> {gatewayIp}")
         
         #creating a TCP socket
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -516,6 +514,7 @@ class MonitoringForIpfsHyperledger(daemon):
         self.server.listen(SERVER_MAX_NUMBER_CONNECTIONS)
     
         while(not gatewayIsConnected):
+            gatewayIp =  self.gatewayConfig["ip"]
             print("Waiting until gateway is connected...")
             #program is blocked here until a connection is established
             clientSocket, clientAddress = self.server.accept()
