@@ -82,8 +82,8 @@ void loop()
   dataField_t dataFields = {0};
   uint8_t posTempBuf = 0;
   
-  // receive XBee packet (wait for 10 seconds)
-  error = xbee802.receivePacketTimeout(0);
+  // receive XBee packet
+  error = xbee802.receivePacketTimeout(5000);
   
   if( error == 0 ) 
   {
@@ -142,9 +142,6 @@ void loop()
      posBuf = 0;
       
     }
-    
-  }else{
-    goToSleepMode();
   }
 }
 
@@ -532,14 +529,15 @@ static void goToSleepMode(void){
 
   // Setting Waspmote to Low-Power Consumption Mode
   //USB.println(F("entering into sleep mode"));
-  PWR.sleep(ALL_OFF);
+  PWR.sleep(SENS_OFF | SD_OFF | XBEE_ON);
   
   // After setting Waspmote to power-down, UART is closed, so it
   // is necessary to open it again
   USB.ON();
-  //USB.println(F("Waspmote wake up!"));
   RTC.ON();
-  
+  xbee802.ON();
+
+  //USB.println(F("Waspmote wake up!"));
   //USB.print(F("Time: "));
   //USB.println(RTC.getTime());
 
