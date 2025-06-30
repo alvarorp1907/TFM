@@ -1,38 +1,13 @@
-/*  
- *  ------ [802_03] - receive XBee packets -------- 
- *  
- *  Explanation: This program shows how to receive packets with 
- *  XBee-802.15.4 modules.
- *  
- *  Copyright (C) 2016 Libelium Comunicaciones Distribuidas S.L. 
- *  http://www.libelium.com 
- *  
- *  This program is free software: you can redistribute it and/or modify 
- *  it under the terms of the GNU General Public License as published by 
- *  the Free Software Foundation, either version 3 of the License, or 
- *  (at your option) any later version. 
- *  
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *  GNU General Public License for more details. 
- *  
- *  You should have received a copy of the GNU General Public License 
- *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
- *  
- *  Version:           3.0
- *  Design:            David Gascón 
- *  Implementation:    Yuri Carmona
- */
- 
 #include <WaspXBee802.h>
 #include <WaspWIFI_PRO.h>
 
 //defines 
 
 //HW
-
 #define HW_WIFI_SOCKET SOCKET1
+
+//sleep mode
+#define DELAY "03"
 
 //server
 #define SERVER_IP "192.168.1.44"
@@ -40,6 +15,7 @@
 #define TCP_LOCAL_PORT "12345"
 #define TCP_REMOTE_PORT "5000"
 #define SEND_TELEMETRY_CMD "SEND_TELEMETRY"
+
 //rx buffer
 #define N_MEASURES_TO_SERVER 2
 #define N_BYTES_PER_RX_FRAME 66 + 4 //adding 4 extra byte to avoid overflow
@@ -58,6 +34,7 @@
 #define NTP_INDEX_SERVER_1 1
 #define NTP_SERVER_2 "wwv.nist.gov"
 #define NTP_INDEX_SERVER_2 2
+
 //types
 typedef struct{
   char * waterTemperature;
@@ -71,6 +48,7 @@ typedef struct{
 static uint8_t sendTelemetryToServer(void);
 static dataField_t getDataFields(uint8_t * frame);
 static uint8_t synchronizeRTC(void);
+static void goToSleepMode(void);
 
 //local variables
 static int error;
@@ -96,7 +74,6 @@ void setup()
   memset(rxBuffer,0,sizeof(rxBuffer));
 }
 
-
 void loop()
 { 
   static int receivedMeasures = 0;
@@ -106,7 +83,7 @@ void loop()
   uint8_t posTempBuf = 0;
   
   // receive XBee packet (wait for 10 seconds)
-  error = xbee802.receivePacketTimeout(2000);
+  error = xbee802.receivePacketTimeout(0);
   
   if( error == 0 ) 
   {
@@ -165,6 +142,9 @@ void loop()
      posBuf = 0;
       
     }
+    
+  }else{
+    goToSleepMode();
   }
 }
 
@@ -532,6 +512,40 @@ static uint8_t synchronizeRTC(void){
   }
 
   return status;
+}
+
+static void goToSleepMode(void){
   
+  // Setting alarm 1 in offset mode:
+  // Alarm 1 is set 15 seconds later
+  
+  char buf [15];
+  
+  sprintf(buf,"00:00:00:%s",DELAY);
+  RTC.setAlarm1(buf,RTC_OFFSET,RTC_ALM1_MODE2);
+
+//  USB.print(F("Time [Day of week, YY/MM/DD, hh:mm:ss]: "));
+//  USB.println(RTC.getTime());
+//
+//  USB.println(F("Alarm1 is set to OFFSET mode: "));
+//  USB.println(RTC.getAlarm1());
+
+  // Setting Waspmote to Low-Power Consumption Mode
+  //USB.println(F("entering into sleep mode"));
+  PWR.sleep(ALL_OFF);
+  
+  // After setting Waspmote to power-down, UART is closed, so it
+  // is necessary to open it again
+  USB.ON();
+  //USB.println(F("Waspmote wake up!"));
+  RTC.ON();
+  
+  //USB.print(F("Time: "));
+  //USB.println(RTC.getTime());
+
+  if( intFlag & RTC_INT )
+  {
+    intFlag &= ~(RTC_INT); // Clear flag
+  }
 }
 
