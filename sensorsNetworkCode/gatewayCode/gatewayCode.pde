@@ -1,5 +1,6 @@
 #include <WaspXBee802.h>
 #include <WaspWIFI_PRO.h>
+#include <WaspAES.h>
 
 //defines 
 
@@ -18,7 +19,7 @@
 
 //rx buffer
 #define N_MEASURES_TO_SERVER 2
-#define N_BYTES_PER_RX_FRAME 66 + 4 //adding 4 extra byte to avoid overflow
+#define N_BYTES_PER_RX_FRAME 66 + 4 //adding 4 extra byte to avoid overflow<WaspAES.h>
 #define LEN_RX_BUFFER N_MEASURES_TO_SERVER*N_BYTES_PER_RX_FRAME
 
 //frame fields
@@ -35,6 +36,9 @@
 #define NTP_SERVER_2 "wwv.nist.gov"
 #define NTP_INDEX_SERVER_2 2
 
+//AES128 encryption
+#define KEY_AES128 "Ak976GbNgqyp16bj"
+
 //types
 typedef struct{
   char * waterTemperature;
@@ -46,7 +50,7 @@ typedef struct{
 
 //function definitions
 static uint8_t sendTelemetryToServer(void);
-static dataField_t getDataFields(uint8_t * frame);
+static dataField_t getDataFields(char * frame);
 static uint8_t synchronizeRTC(void);
 static void goToSleepMode(void);
 
@@ -81,6 +85,10 @@ void loop()
   char tempBuf [90];
   dataField_t dataFields = {0};
   uint8_t posTempBuf = 0;
+  char decrypted_message[128];
+  uint16_t sizeDecrypted; 
+  uint8_t encrypted_message[80];//5 blocks
+  uint16_t encrypted_length;
   
   // receive XBee packet
   error = xbee802.receivePacketTimeout(5000);
@@ -97,8 +105,19 @@ void loop()
     USB.print(F("Length: "));  
     USB.println( xbee802._length,DEC);
 
+    //Decrypting received message with AES128
+    memset(encrypted_message,0,sizeof(encrypted_message));
+    memcpy(encrypted_message,xbee802._payload,xbee802._length);
+    encrypted_length = AES.sizeOfBlocks((char *) encrypted_message);
+    USB.print(encrypted_length,DEC);
+
+    AES.decrypt(128,KEY_AES128,encrypted_message,encrypted_length, (uint8_t *) decrypted_message, &sizeDecrypted, ECB, ZEROS);    
+    //USB.print(F("decrypted message:"));
+    //USB.print((char *) decrypted_message);
+    
+    
     //processing received frame
-    dataFields = getDataFields(xbee802._payload);
+    dataFields = getDataFields(decrypted_message);
     memset(tempBuf,0,sizeof(tempBuf));
     
     if (receivedMeasures == 0){
@@ -133,7 +152,7 @@ void loop()
      receivedMeasures = 0;
       
      //send collected measures to HTTP server
-     USB.print(F("Sending pending measures to HTTP server!"));
+     USB.println(F("Sending pending measures to HTTP server!"));
      USB.print(rxBuffer);
      sendTelemetryToServer();
 
@@ -312,13 +331,13 @@ static uint8_t sendTelemetryToServer(){
   return error;
 }
 
-static dataField_t getDataFields(uint8_t * frame){
+static dataField_t getDataFields(char * frame){
   
   char * token;
   int nField = 0;
   dataField_t dataFields = {0};
   
-  token = strtok((char *) frame, "#");
+  token = strtok( frame, "#");
 
   while (token != NULL) {
     

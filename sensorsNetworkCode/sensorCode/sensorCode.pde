@@ -27,12 +27,14 @@
  
 #include <WaspXBee802.h>
 #include <WaspFrame.h>
+#include <WaspAES.h>
 #include <WaspOneWire.h>
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
 
 //Defines and macros
+//Sensors
 #define PH_BUFFER_LEN  10
 #define SENSOR_PIN_PH ANALOG1
 #define OFFSET_PH_SENSOR 0.52
@@ -42,6 +44,9 @@
 #define SENSOR_PH_ID 71
 #define SENSOR_TURBIDITY_ID 72
 #define DELAY 60 //s
+
+//AES128 encryption
+#define KEY_AES128 "Ak976GbNgqyp16bj"
 
 //functions definition
 static float getPh(void);
@@ -201,6 +206,8 @@ static int getTurbidity(void){
 }
 
 static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
+
+  uint8_t encrypted_message[80]; //5 blocks of 16 bytes 
   
   // create new ASCII frame
   frame.createFrame(ASCII);  
@@ -210,8 +217,21 @@ static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
   frame.addSensor(SENSOR_WATER_PH, ph); 
   frame.addSensor(SENSOR_WATER_TURB, turbidity);
 
+  //printing frame in plain text
+  USB.println();
+  USB.println(F("Plain message at application layer that is going to be sent:"));
+  frame.showFrame();
+  USB.println();
+
+  //encrypts frame at application layer with AES128
+  AES.encrypt(128,KEY_AES128,(char *)frame.buffer, encrypted_message, ECB, ZEROS);
+
+  USB.println(F("Encrypted message at application layer that is going to be sent:"));
+  USB.println((char *)encrypted_message);
+  USB.println();
+  
   // send XBee packet
-  error = xbee802.send( RX_ADDRESS, frame.buffer, frame.length );   
+  error = xbee802.send( RX_ADDRESS, encrypted_message, sizeof(encrypted_message) );   
   
   // check TX flag
   if( error == 0 )
