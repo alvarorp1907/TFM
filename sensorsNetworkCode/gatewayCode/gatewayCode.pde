@@ -87,7 +87,7 @@ void loop()
   uint8_t posTempBuf = 0;
   char decrypted_message[128];
   uint16_t sizeDecrypted; 
-  uint8_t encrypted_message[80];//5 blocks
+  //uint8_t encrypted_message[80];//5 blocks
   uint16_t encrypted_length;
   
   // receive XBee packet
@@ -106,16 +106,14 @@ void loop()
     USB.println( xbee802._length,DEC);
 
     //Decrypting received message with AES128
-    memset(encrypted_message,0,sizeof(encrypted_message));
-    memcpy(encrypted_message,xbee802._payload,xbee802._length);
-    encrypted_length = AES.sizeOfBlocks((char *) encrypted_message);
-    USB.print(encrypted_length,DEC);
+    //memset(encrypted_message,0,sizeof(encrypted_message));
+    //memcpy(encrypted_message,xbee802._payload,xbee802._length);
+    encrypted_length = AES.sizeOfBlocks((char *) xbee802._payload);
 
-    AES.decrypt(128,KEY_AES128,encrypted_message,encrypted_length, (uint8_t *) decrypted_message, &sizeDecrypted, ECB, ZEROS);    
+    AES.decrypt(128,KEY_AES128,xbee802._payload,encrypted_length, (uint8_t *) decrypted_message, &sizeDecrypted, ECB, ZEROS);    
     //USB.print(F("decrypted message:"));
     //USB.print((char *) decrypted_message);
-    
-    
+       
     //processing received frame
     dataFields = getDataFields(decrypted_message);
     memset(tempBuf,0,sizeof(tempBuf));
