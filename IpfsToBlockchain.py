@@ -12,6 +12,7 @@ import socket
 import re
 import http.server
 import ssl
+from Crypto.Cipher import AES
 
 #################### constants ####################
 
@@ -58,6 +59,9 @@ BLOCKCHAIN_OPERATION_FAILED = "FAILURE"
 
 OPERATION_COMPLETED_STATUS_CODE = "200"
 OPERATION_FAILED_STATUS_CODE = "500"
+
+#Gateway info
+GW_AES128_SECRET_KEY = "d09bfpJkrbhr638v"
 
 
 #################### variables and structures ####################
@@ -575,7 +579,15 @@ class MonitoringForIpfsHyperledger(daemon):
             try:
                 #wait until some gateway event arrives
                 rawData = self.gateway.recv(RX_BUFFER_LEN)
-                recvData = rawData.decode()
+                #recvData = rawData.decode()
+                decodedData = rawData.decode('ascii') 
+                encryptedbytes = bytes.fromhex(decodedData)
+                print(encryptedbytes)
+                
+                #decrypt message received
+                plainData = self.decryptMessageAES128(encryptedbytes)
+                print(f"Plain text -> {plainData}")
+                plainDataDecode = plainData.decode('utf-8')
                 
                 #verify if gateway connection still open
                 isConnectionClosed = self.isSocketClosed()
@@ -584,7 +596,7 @@ class MonitoringForIpfsHyperledger(daemon):
                     self.waitUntilGatewayIsConnected()
                 else:#open
                     #processing received data from gateway
-                    responsePayload = self.handlerObj.processRequest(recvData)
+                    responsePayload = self.handlerObj.processRequest(plainDataDecode)
                     statusCode = ""
                     #sending a response to client
                     if responsePayload == BLOCKCHAIN_OPERATION_COMPLETED:
@@ -626,6 +638,22 @@ class MonitoringForIpfsHyperledger(daemon):
         self.serverLoop()
         
 
+
+    def decryptMessageAES128(self,message):
+        """
+        Def:
+            Function to decrypt a message using AES128 with ECB cypher and
+            ZEROS padding.
+        Args:
+            message: message to decrypt.
+            
+        Return:
+           Decrypted message.
+        """
+        cipher = AES.new(GW_AES128_SECRET_KEY.encode('utf-8'), AES.MODE_ECB)
+        plainTextWithPadding = cipher.decrypt(message)
+        plainTextWithoutPadding = plainTextWithPadding.rstrip(b'\x00')
+        return plainTextWithoutPadding
         
      
 #################### main ####################

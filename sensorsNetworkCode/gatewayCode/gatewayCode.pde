@@ -36,9 +36,9 @@
 #define NTP_SERVER_2 "wwv.nist.gov"
 #define NTP_INDEX_SERVER_2 2
 
-//AES128 encryption
+//AES128
 #define KEY_AES128 "Ak976GbNgqyp16bj"
-
+#define KEY_AES128_SERVER "d09bfpJkrbhr638v"
 //types
 typedef struct{
   char * waterTemperature;
@@ -170,6 +170,7 @@ static uint8_t sendTelemetryToServer(){
   uint8_t status = 0;
   unsigned long previous = 0;
   uint16_t socket_handle = 0;
+  uint8_t encrypted_message[192];
   
   //////////////////////////////////////////////////
   // 1. Switch ON
@@ -256,10 +257,24 @@ static uint8_t sendTelemetryToServer(){
 
     if (status == true)
     {   
+      
+      //encrypts frame at application layer with AES128
+      AES.encrypt(128,KEY_AES128_SERVER,rxBuffer,encrypted_message, ECB, ZEROS);
+      USB.print("Encrypted data to be sent to TCP server:");
+      USB.print((char *) encrypted_message);
+
+      //encode the data in HEX
+      char hex_string[192];  // espacio para hex + terminador
+      memset(hex_string,0,sizeof(hex_string));
+      for (int i = 0; i < 192; i++) {
+        sprintf(&hex_string[i*2], "%02X", encrypted_message[i]);
+      }
+
+      
       ////////////////////////////////////////////////
       // 3.2. send data
       ////////////////////////////////////////////////
-      error = WIFI_PRO.send( socket_handle, rxBuffer);
+      error = WIFI_PRO.send( socket_handle,hex_string);
 
       // check response
       if (error == 0)
