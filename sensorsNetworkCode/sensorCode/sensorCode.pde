@@ -34,6 +34,10 @@
 #include <stdlib.h>
 
 //Defines and macros
+
+//debug mode
+#define DEBUG_MODE
+
 //Sensors
 #define PH_BUFFER_LEN  10
 #define SENSOR_PIN_PH ANALOG1
@@ -43,7 +47,11 @@
 #define SENSOR_TEMPERATURE_ID 70
 #define SENSOR_PH_ID 71
 #define SENSOR_TURBIDITY_ID 72
+#ifdef DEBUG_MODE
 #define DELAY 60 //s
+#else
+#define DELAY 3600 //1h
+#endif
 
 //AES128 encryption
 #define KEY_AES128 "Ak976GbNgqyp16bj"
@@ -244,7 +252,8 @@ static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
   }
   else 
   {
-    USB.println(F("send error"));
+    USB.print(F("send error:"));
+    USB.println(error,DEC);
     
     // blink red LED
     Utils.blinkRedLED();
@@ -285,6 +294,9 @@ static void goToSleepMode(void){
   //power on modules
   PWR.setSensorPower(SENS_5V, SENS_ON);
   delay(1000);
+
+  // init XBee
+  xbee802.ON();
   
   // Waspmote wakes up at '11:25:30'
   if( intFlag & RTC_INT )
