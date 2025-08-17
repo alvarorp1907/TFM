@@ -56,7 +56,7 @@ static void sendMeasuresToGateway(float temperature, float ph, int turbidity);
 static void goToSleepMode(void);
 
 // Destination MAC address
-static char RX_ADDRESS[] = "0013A200417EE50B";
+static char RX_ADDRESS[] = "0013A200412A16C3";
 // Define the Waspmote ID
 static char WASPMOTE_ID[] = "node_01";
 // define variable
