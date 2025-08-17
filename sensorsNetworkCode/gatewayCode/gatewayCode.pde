@@ -144,13 +144,13 @@ void loop()
     receivedMeasures = receivedMeasures + 1;
     USB.println(receivedMeasures);
    
-     //send collected measures to HTTP server each N_MEASURES_TO_SERVER measures received
+     //send collected measures to TCP server each N_MEASURES_TO_SERVER measures received
     if (receivedMeasures == N_MEASURES_TO_SERVER)
     {
      receivedMeasures = 0;
       
-     //send collected measures to HTTP server
-     USB.println(F("Sending pending measures to HTTP server!"));
+     //send collected measures to TCP server
+     USB.println(F("Sending pending measures to TCP server!"));
      USB.print(rxBuffer);
      sendTelemetryToServer();
 
@@ -501,7 +501,8 @@ static void InitsynchronitationTime(){
   //synchronize time in RTC
   // Check if module is connected
   if (status == true)
-  {   
+  {
+    WIFI_PRO.timeActivationFlag(true);   
     status = synchronizeRTC();
   }
 
@@ -525,7 +526,7 @@ static uint8_t synchronizeRTC(void){
 
   //set RTC
   error = WIFI_PRO.setTimeFromWIFI();
-
+  
   // check response
   if (error == 0)
   {
