@@ -40,7 +40,7 @@ type DeviceConfig struct {
 	AssetType string `json:"AssetType"`
 	Name string `json:"name"`
 	IP      string `json:"ip"`
-	MAC string `json:"mac"`
+	XbeeMac string `json:"XbeeMac"`
 	Description string `json:"description"`
 
 }
@@ -48,7 +48,8 @@ type DeviceConfig struct {
 // InitLedger adds a base set of assets to the ledger
 func (c *CIDContract) InitLedger(ctx contractapi.TransactionContextInterface) error {
 	records := []DeviceConfig{
-		{AssetType: DEVICE_CONFIG_ASSET_TYPE, Name: "Gateway", IP: "192.168.1.36", MAC : "00:1A:2B:3C:4D:5E", Description : "Gateway of the network responsible for aggregating all data emitted by waspmotes and storing it in Hyperledger Fabric and IPFS"},
+		{AssetType: DEVICE_CONFIG_ASSET_TYPE, Name: "Gateway", IP: "192.168.1.33", XbeeMac : "0013A200412A16C3", Description : "Gateway of the network responsible for aggregating all data emitted by waspmotes and storing it in Hyperledger Fabric and IPFS"},
+		{AssetType: DEVICE_CONFIG_ASSET_TYPE, Name: "Sensor Node", IP: "None", XbeeMac : "0013A200416BE23E", Description : "Gateway of the network responsible for aggregating all data emitted by waspmotes and storing it in Hyperledger Fabric and IPFS"},
 	}
 
 	for _, record := range records {
