@@ -1,15 +1,23 @@
 #include <WaspXBee802.h>
 #include <WaspWIFI_PRO.h>
 #include <WaspAES.h>
+#include <math.h>
 
 //defines 
+
+//debug mode
+#define DEBUG_MODE
 
 //HW
 #define HW_WIFI_SOCKET SOCKET1
 
 //sleep mode
-#define DELAY "03"
+#define DELAY "3"
 
+//AES128
+#define KEY_AES128 "Ak976GbNgqyp16bj"
+#define KEY_AES128_SERVER "d09bfpJkrbhr638v"
+#define ENCRYPTED_BLOCK_SIZE_BYTES 16 //16 BYTES
 //server
 #define SERVER_IP "192.168.1.44"
 #define SERVER_PORT "5000"
@@ -18,10 +26,16 @@
 #define SEND_TELEMETRY_CMD "SEND_TELEMETRY"
 
 //rx buffer
-#define N_MEASURES_TO_SERVER 2
-#define N_BYTES_PER_RX_FRAME 66 + 4 //adding 4 extra byte to avoid overflow<WaspAES.h>
+#define N_BYTES_PER_RX_FRAME 95 //adding 10 extra byte to avoid overflow
+#ifdef DEBUG_MODE
+#define N_MEASURES_TO_SERVER 24
+#else
+#define N_MEASURES_TO_SERVER 24
+#endif
 #define LEN_RX_BUFFER N_MEASURES_TO_SERVER*N_BYTES_PER_RX_FRAME
-
+#define LEN_ENCRYPTED_BUFFER 240
+#define LEN_ENCODED_BUFFER 480
+ 
 //frame fields
 #define N_NAME_FIELD 2
 #define N_SEQUENCE_FIELD 3
@@ -36,9 +50,6 @@
 #define NTP_SERVER_2 "wwv.nist.gov"
 #define NTP_INDEX_SERVER_2 2
 
-//AES128
-#define KEY_AES128 "Ak976GbNgqyp16bj"
-#define KEY_AES128_SERVER "d09bfpJkrbhr638v"
 //types
 typedef struct{
   char * waterTemperature;
@@ -102,7 +113,7 @@ void loop()
     USB.println( xbee802._payload, xbee802._length);
     
     // Show data stored in '_payload' buffer indicated by '_length'
-    USB.print(F("Length: "));  
+    USB.print(F("Length received frame from sensor node: "));  
     USB.println( xbee802._length,DEC);
 
     //Decrypting received message with AES128
@@ -128,12 +139,21 @@ void loop()
     
     if (isRtcSync)
     {
-      sprintf(&tempBuf[posTempBuf],"TIME:%s \n\r",RTC.getTime());
+      if (receivedMeasures != (N_MEASURES_TO_SERVER - 1)){
+        sprintf(&tempBuf[posTempBuf],"TIME:%s \n\r",RTC.getTime());
+      }else{
+        sprintf(&tempBuf[posTempBuf],"TIME:%s END",RTC.getTime());
+      }
     }else{
-      sprintf(&tempBuf[posTempBuf],"TIME: not sync yet \n\r");
+      if (receivedMeasures != (N_MEASURES_TO_SERVER - 1)){
+        sprintf(&tempBuf[posTempBuf],"TIME: not sync yet \n\r");
+      }else{
+        sprintf(&tempBuf[posTempBuf],"TIME: not sync yet END");
+      }
     }
 
-    USB.println(sizeof(tempBuf));
+    USB.print(F("Length decoded frame: "));  
+    USB.println(strlen(tempBuf),DEC);
     
     //stroring in buffer
     memcpy(&rxBuffer[posBuf], tempBuf, strlen(tempBuf));
@@ -147,6 +167,7 @@ void loop()
      //send collected measures to TCP server each N_MEASURES_TO_SERVER measures received
     if (receivedMeasures == N_MEASURES_TO_SERVER)
     {
+     
      receivedMeasures = 0;
       
      //send collected measures to TCP server
@@ -170,7 +191,10 @@ static uint8_t sendTelemetryToServer(){
   uint8_t status = 0;
   unsigned long previous = 0;
   uint16_t socket_handle = 0;
-  uint8_t encrypted_message[192];
+  uint8_t encrypted_message[LEN_ENCRYPTED_BUFFER];
+  char hex_string[LEN_ENCODED_BUFFER];
+  uint8_t nFragments;
+  int lenBuf = strlen(rxBuffer);
   
   //////////////////////////////////////////////////
   // 1. Switch ON
@@ -256,35 +280,68 @@ static uint8_t sendTelemetryToServer(){
     }
 
     if (status == true)
-    {   
-      
-      //encrypts frame at application layer with AES128
-      AES.encrypt(128,KEY_AES128_SERVER,rxBuffer,encrypted_message, ECB, ZEROS);
-      USB.print("Encrypted data to be sent to TCP server:");
-      USB.print((char *) encrypted_message);
-
-      //encode the data in HEX
-      char hex_string[192];  // espacio para hex + terminador
-      memset(hex_string,0,sizeof(hex_string));
-      for (int i = 0; i < 192; i++) {
-        sprintf(&hex_string[i*2], "%02X", encrypted_message[i]);
-      }
-
+    {
       
       ////////////////////////////////////////////////
       // 3.2. send data
       ////////////////////////////////////////////////
-      error = WIFI_PRO.send( socket_handle,hex_string);
+      //USB.println(F("strlen buffer rx"));
+      //USB.println(strlen(rxBuffer),DEC);
+      //float division = (float)lenBuf/LEN_ENCRYPTED_BUFFER;
+      //USB.println(F("Division:"));
+      //USB.println(division);
+      char tempBuf [LEN_ENCRYPTED_BUFFER];
+      uint16_t  nBytesBlocks = AES.sizeOfBlocks(rxBuffer);
+      float division = (float)nBytesBlocks / LEN_ENCRYPTED_BUFFER;
+      nFragments = ceil(division);
+      USB.println(F("Number of fragments to send:"));
+      USB.println(nFragments,DEC);
+      uint16_t byteCount = 0;
+      uint8_t len=0;
 
-      // check response
-      if (error == 0)
-      {
-        USB.println(F("3.2. Send data OK"));   
-      }
-      else
-      {
-        USB.println(F("3.2. Error calling 'send' function"));
-        WIFI_PRO.printErrorCode();       
+      for(int i=0;i<nFragments;i++){
+
+        uint16_t remainingBytes = nBytesBlocks - byteCount;
+        len = remainingBytes > LEN_ENCRYPTED_BUFFER ? LEN_ENCRYPTED_BUFFER : remainingBytes;
+
+        //encrypts frame at application layer with AES128
+        memset(encrypted_message,0,LEN_ENCRYPTED_BUFFER);
+        memcpy(tempBuf,&rxBuffer[i*LEN_ENCRYPTED_BUFFER],len);
+        AES.encrypt(128,KEY_AES128_SERVER,tempBuf,encrypted_message, ECB, ZEROS);
+        USB.println("Encrypted data to be sent to TCP server:");
+        //USB.print(encrypted_message);
+        
+        //encode the data in HEX
+        memset(hex_string,0,LEN_ENCODED_BUFFER);
+
+        USB.println(F("len encrypted:"));
+        USB.println(len,DEC);
+        
+        for (int j=0; j < len; j++) {
+          sprintf(&hex_string[j*2], "%02X", encrypted_message[j]);
+          byteCount++;
+        }
+
+        USB.println(F("strlen hex_string:"));
+        USB.println(hex_string);
+        USB.println(F("len sent:"));
+        USB.println(len*2);
+        
+        error = WIFI_PRO.send( socket_handle,(uint8_t*) hex_string,len*2);
+
+        // check response
+        if (error == 0)
+        {
+          USB.println(F("3.2. Send data OK"));   
+        }
+        else
+        {
+          USB.println(F("3.2. Error calling 'send' function"));
+          WIFI_PRO.printErrorCode();       
+        }
+
+        //delay to allow the server to process each fragment independently
+        delay(300);
       }
 
       ////////////////////////////////////////////////
