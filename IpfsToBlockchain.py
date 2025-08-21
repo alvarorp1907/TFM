@@ -52,7 +52,7 @@ CERT_CA_DIR = "./CAcertificates/"
 LOCALHOST = "192.168.1.44"
 SERVER_MAX_NUMBER_CONNECTIONS = 5
 SERVER_PORT = 5000
-RX_BUFFER_LEN = 2048
+RX_BUFFER_LEN = 8192
 
 BLOCKCHAIN_OPERATION_COMPLETED = "SUCESS"
 BLOCKCHAIN_OPERATION_FAILED = "FAILURE"
@@ -404,10 +404,11 @@ class HandlerServerTCP:
     
     GATEWAY_STORE_CID_EVENT = "STORE_CID"
     GATEWAY_SEND_TELEMTRY_EVENT = "SEND_TELEMETRY"
+    GATEWAY_SEND_TELEMTRY_EVENT_END_STR = "END"
     
     #getaway event dictionary:  
     #key = command name | 1st value: command pattern , 2nd value : associated function pointer
-    gatewayEventDict = {GATEWAY_SEND_TELEMTRY_EVENT : [fr"^{GATEWAY_SEND_TELEMTRY_EVENT}\s+(.*)$",uploadTelemetryBlockchainAndIPFS]}
+    gatewayEventDict = {GATEWAY_SEND_TELEMTRY_EVENT : [fr"^{GATEWAY_SEND_TELEMTRY_EVENT}\s+(.*)\s{GATEWAY_SEND_TELEMTRY_EVENT_END_STR}$",uploadTelemetryBlockchainAndIPFS]}
     
     
     
@@ -574,26 +575,39 @@ class MonitoringForIpfsHyperledger(daemon):
         #init TCP server
         print(f"TCP server listening at ({LOCALHOST}:{SERVER_PORT})")
         self.waitUntilGatewayIsConnected()
+        isConnectionClosed = False
         
         while True:
             try:
-                #wait until some gateway event arrives
-                rawData = self.gateway.recv(RX_BUFFER_LEN)
-                #recvData = rawData.decode()
-                decodedData = rawData.decode('ascii') 
-                encryptedbytes = bytes.fromhex(decodedData)
-                print(encryptedbytes)
+                plainDataDecode = ""
+                #reception loop
+                while True:
+                    #wait until data arrives
+                    rawData = self.gateway.recv(RX_BUFFER_LEN)
+                    
+                    #check if connection is close
+                    if self.isSocketClosed():
+                        isConnectionClosed = True
+                        break
+                    
+                    #process fragment
+                    decodedData = rawData.decode('ascii') 
+                    encryptedbytes = bytes.fromhex(decodedData)
+                    print(decodedData)
+                    print(len(decodedData))
                 
-                #decrypt message received
-                plainData = self.decryptMessageAES128(encryptedbytes)
-                print(f"Plain text -> {plainData}")
-                plainDataDecode = plainData.decode('utf-8')
-                
-                #verify if gateway connection still open
-                isConnectionClosed = self.isSocketClosed()
+                    #decrypt message received
+                    auxPlainData = self.decryptMessageAES128(encryptedbytes)
+                    print(f"Plain text -> {auxPlainData}")
+                    plainDataDecode += auxPlainData.decode('utf-8')
+                    
+                    #check for termination string
+                    if plainDataDecode[-3:] == "END" or self.isSocketClosed():
+                        break
                 
                 if isConnectionClosed:#closed
                     self.waitUntilGatewayIsConnected()
+                    isConnectionClosed = False
                 else:#open
                     #processing received data from gateway
                     responsePayload = self.handlerObj.processRequest(plainDataDecode)
