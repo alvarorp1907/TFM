@@ -26,7 +26,7 @@
 #define SEND_TELEMETRY_CMD "SEND_TELEMETRY"
 
 //rx buffer
-#define N_BYTES_PER_RX_FRAME 95 //adding 10 extra byte to avoid overflow
+#define N_BYTES_PER_RX_FRAME 95
 #ifdef DEBUG_MODE
 #define N_MEASURES_TO_SERVER 24
 #else
@@ -63,7 +63,6 @@ typedef struct{
 static uint8_t sendTelemetryToServer(void);
 static dataField_t getDataFields(char * frame);
 static uint8_t synchronizeRTC(void);
-static void goToSleepMode(void);
 
 //local variables
 static int error;
@@ -130,9 +129,9 @@ void loop()
     memset(tempBuf,0,sizeof(tempBuf));
     
     if (receivedMeasures == 0){
-      sprintf(tempBuf,"%s NAME:%s SEQ:%s %s C %s %s %% ",SEND_TELEMETRY_CMD,dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
+      sprintf(tempBuf,"%s %s %s %s %% ",SEND_TELEMETRY_CMD,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
     }else{
-      sprintf(tempBuf,"NAME:%s SEQ:%s C %s %s %s %% ",dataFields.name,dataFields.seq,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
+      sprintf(tempBuf,"%s %s %s %% ",dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
     }
     
     posTempBuf = strlen(tempBuf);
@@ -599,41 +598,5 @@ static uint8_t synchronizeRTC(void){
   }
 
   return status;
-}
-
-static void goToSleepMode(void){
-  
-  // Setting alarm 1 in offset mode:
-  // Alarm 1 is set 15 seconds later
-  
-  char buf [15];
-  
-  sprintf(buf,"00:00:00:%s",DELAY);
-  RTC.setAlarm1(buf,RTC_OFFSET,RTC_ALM1_MODE2);
-
-//  USB.print(F("Time [Day of week, YY/MM/DD, hh:mm:ss]: "));
-//  USB.println(RTC.getTime());
-//
-//  USB.println(F("Alarm1 is set to OFFSET mode: "));
-//  USB.println(RTC.getAlarm1());
-
-  // Setting Waspmote to Low-Power Consumption Mode
-  //USB.println(F("entering into sleep mode"));
-  PWR.sleep(SENS_OFF | SD_OFF | XBEE_ON);
-  
-  // After setting Waspmote to power-down, UART is closed, so it
-  // is necessary to open it again
-  USB.ON();
-  RTC.ON();
-  xbee802.ON();
-
-  //USB.println(F("Waspmote wake up!"));
-  //USB.print(F("Time: "));
-  //USB.println(RTC.getTime());
-
-  if( intFlag & RTC_INT )
-  {
-    intFlag &= ~(RTC_INT); // Clear flag
-  }
 }
 
