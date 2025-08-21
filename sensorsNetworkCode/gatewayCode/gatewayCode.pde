@@ -92,7 +92,7 @@ void loop()
 { 
   static int receivedMeasures = 0;
   static int posBuf = 0;
-  char tempBuf [70];
+  char tempBuf [90];
   dataField_t dataFields;
   uint8_t posTempBuf = 0;
   char decrypted_message[128];
