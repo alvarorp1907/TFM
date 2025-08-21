@@ -92,8 +92,8 @@ void loop()
 { 
   static int receivedMeasures = 0;
   static int posBuf = 0;
-  char tempBuf [90];
-  dataField_t dataFields = {0};
+  char tempBuf [70];
+  dataField_t dataFields;
   uint8_t posTempBuf = 0;
   char decrypted_message[128];
   uint16_t sizeDecrypted; 
@@ -340,7 +340,7 @@ static uint8_t sendTelemetryToServer(){
         }
 
         //delay to allow the server to process each fragment independently
-        delay(300);
+        delay(400);
       }
 
       ////////////////////////////////////////////////
@@ -404,7 +404,7 @@ static dataField_t getDataFields(char * frame){
   
   char * token;
   int nField = 0;
-  dataField_t dataFields = {0};
+  dataField_t dataFields;
   
   token = strtok( frame, "#");
 
