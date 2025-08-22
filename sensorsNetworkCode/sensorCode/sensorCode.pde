@@ -26,7 +26,6 @@
  */
  
 #include <WaspXBee802.h>
-#include <WaspFrame.h>
 #include <WaspAES.h>
 #include <WaspOneWire.h>
 #include <math.h>
@@ -48,9 +47,9 @@
 #define SENSOR_PH_ID 71
 #define SENSOR_TURBIDITY_ID 72
 #ifdef DEBUG_MODE
-#define DELAY 60 //s
+#define DELAY "03" //s
 #else
-#define DELAY 3600 //1h
+#define DELAY "60" //1h
 #endif
 
 //AES128 encryption
@@ -83,7 +82,7 @@ void setup()
   USB.ON();
   
   // store Waspmote identifier in EEPROM memory
-  frame.setID("SENSOR_WASPMOTE");
+  //frame.setID("SENSOR_WASPMOTE");
   
   // init XBee
   xbee802.ON();
@@ -215,28 +214,46 @@ static int getTurbidity(void){
 
 static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
 
-  uint8_t encrypted_message[80]; //5 blocks of 16 bytes 
+  char txBuffer[80]="";
+  uint8_t encrypted_message[80]; //5 blocks of 16 bytes
+  char tempAux[10] = "";
+  char phAux[10] = "";
+
+  //initialize buffer
+  memset(encrypted_message,0,sizeof(encrypted_message));
   
-  // create new ASCII frame
-  frame.createFrame(ASCII);  
-  
-  // add frame fields
-  frame.addSensor(SENSOR_WATER_WT, temperature);
-  frame.addSensor(SENSOR_WATER_PH, ph); 
-  frame.addSensor(SENSOR_WATER_TURB, turbidity);
+  //fill tx buffer with the collected data
+  dtostrf(temperature,0, 2, tempAux);// parameter width is o to avoid extra spaces
+  dtostrf(ph,0,2, phAux);// parameter width is o to avoid extra spaces
+  sprintf(txBuffer,"#Temp:%s#pH:%s#turb:%d#",tempAux,phAux,turbidity);
 
   //printing frame in plain text
   USB.println();
   USB.println(F("Plain message at application layer that is going to be sent:"));
-  frame.showFrame();
+  USB.println(txBuffer);
   USB.println();
 
   //encrypts frame at application layer with AES128
-  AES.encrypt(128,KEY_AES128,(char *)frame.buffer, encrypted_message, ECB, ZEROS);
+  AES.encrypt(128,KEY_AES128,txBuffer,encrypted_message, ECB, ZEROS);
 
   USB.println(F("Encrypted message at application layer that is going to be sent:"));
   USB.println((char *)encrypted_message);
   USB.println();
+
+  //in debug mode we check the encrypted msg
+  #ifdef DEBUG_MODE
+    char decrypted_msg[80]="";
+    uint16_t bytes = AES.sizeOfBlocks((char *)encrypted_message);
+    uint16_t sizeDecrypted;
+    
+    AES.decrypt(128,KEY_AES128,encrypted_message,bytes, (uint8_t *) decrypted_msg, &sizeDecrypted, ECB, ZEROS);
+
+    USB.println("Decrypted message:");
+    USB.println(decrypted_msg);
+    USB.println("Size decrypted:");
+    USB.println(sizeDecrypted,DEC);
+    
+  #endif
   
   // send XBee packet
   error = xbee802.send( RX_ADDRESS, encrypted_message, sizeof(encrypted_message) );   
@@ -266,8 +283,12 @@ static void goToSleepMode(void){
   // Alarm 1 is set 15 seconds later
   
   char buf [15];
-  
-  sprintf(buf,"00:00:00:%d",DELAY);
+
+  #ifdef DEBUG_MODE
+    sprintf(buf,"00:00:00:%s",DELAY);
+  #else
+    sprintf(buf,"00:00:%s:00",DELAY);
+  #endif
   RTC.setAlarm1(buf,RTC_OFFSET,RTC_ALM1_MODE2);
 
 //  USB.print(F("Time [Day of week, YY/MM/DD, hh:mm:ss]: "));
