@@ -1,28 +1,5 @@
 /*  
- *  ------ [802_02] - send packets -------- 
- *  
- *  Explanation: This program shows how to send packets to a gateway
- *  indicating the MAC address of the receiving XBee module 
- *  
- *  Copyright (C) 2016 Libelium Comunicaciones Distribuidas S.L. 
- *  http://www.libelium.com 
- *  
- *  This program is free software: you can redistribute it and/or modify 
- *  it under the terms of the GNU General Public License as published by 
- *  the Free Software Foundation, either version 3 of the License, or 
- *  (at your option) any later version. 
- *  
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- *  GNU General Public License for more details. 
- *  
- *  You should have received a copy of the GNU General Public License 
- *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
- *  
- *  Version:           3.0
- *  Design:            David Gascón 
- *  Implementation:    Yuri Carmona
+ *  Sensor code
  */
  
 #include <WaspXBee802.h>
@@ -94,17 +71,43 @@ void loop()
 {
   static float temperature, ph;
   static int turbidity;
+
+  #ifdef DEBUG_MODE
+    unsigned long startTime;
+    unsigned long elapsedTime;
+
+    startTime = millis();
+    USB.println();
+    USB.println(F("**** Entering in working mode ***"));
+  #endif
   
   //getting Ph, temperature and turbidity from connected sensors
-  USB.println("");
-  USB.println(F("--- Quality of water ---"));
+  
+  #ifdef DEBUG_MODE
+    USB.println("");
+    USB.println(F("--- Quality of water ---"));
+  #endif
+  
   turbidity = getTurbidity();
   temperature = getTemperature();
   ph = getPh();
-  USB.println(F("------------------------"));
+  
+  #ifdef DEBUG_MODE
+    USB.println(F("------------------------"));
+  #endif
 
   //sending collected data to the gateway through xbee module
   sendMeasuresToGateway(temperature,ph,turbidity);
+
+  #ifdef DEBUG_MODE
+    elapsedTime = millis() - startTime; //elapsed time while adquiring measures from sensors
+    USB.println(F("Elapsed time while adquiring measures from sensors:"));
+    USB.print(elapsedTime,DEC);
+    USB.println(F(" ms"));
+    USB.println();
+    USB.println(F("*********************************"));
+    USB.println();
+  #endif
 
   //entering into sleep mode
   goToSleepMode();
@@ -148,9 +151,10 @@ static float getPh(void){
   //calculate Ph value
   voltage =(float)sum*ADC_VREF/1023/6;
   ph = 3.5*voltage + OFFSET_PH_SENSOR;
-
-  USB.print(F("pH value: "));
-  USB.println(ph);
+  #ifdef DEBUG_MODE
+    USB.print(F("pH value: "));
+    USB.println(ph);
+  #endif
   
   return ph;
 }
@@ -192,9 +196,11 @@ static float getTemperature(void){
     temperature = (float)rawTemperature / 16.0;
 
     // Mostramos la temperatura por USB
-    USB.print(F("Temperature: "));
-    USB.print(temperature);
-    USB.println(F(" C"));
+    #ifdef DEBUG_MODE
+      USB.print(F("Temperature: "));
+      USB.print(temperature);
+      USB.println(F(" C"));
+    #endif
   }
   else
   {
@@ -206,8 +212,11 @@ static float getTemperature(void){
 
 static int getTurbidity(void){
   //ToDo: to complete
-  USB.print(F("Turbidity mock measure: "));
-  USB.println("20%");
+
+  #ifdef DEBUG_MODE
+    USB.print(F("Turbidity mock measure: "));
+    USB.println("20%");
+  #endif
   
   return 20;
 }
@@ -229,38 +238,36 @@ static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
   dtostrf(ph,0,2, phAux);// parameter width is o to avoid extra spaces
   sprintf(txBuffer,"#Temp:%s#pH:%s#turb:%d#",tempAux,phAux,turbidity);
 
-  //printing frame in plain text
-  USB.println();
-  USB.println(F("Plain message at application layer that is going to be sent:"));
-  USB.println(txBuffer);
-  USB.println();
-
   //calculating length of plain text for AES128 encryption
   bytes = AES.sizeOfBlocks(txBuffer);
 
   //encrypts frame at application layer with AES128
   AES.encrypt(128,KEY_AES128,txBuffer,encrypted_message, ECB, ZEROS);
 
-  USB.println(F("Encrypted message at application layer that is going to be sent:"));
-  USB.println((char *)encrypted_message);
-  USB.println();
-
   //in debug mode we check the encrypted msg
   #ifdef DEBUG_MODE
     uint8_t decrypted_msg[80]="";
     uint16_t sizeDecrypted;
-    
+
+    //decrypting message to check encryption
     AES.decrypt(128,KEY_AES128,encrypted_message,bytes,decrypted_msg, &sizeDecrypted, ECB, ZEROS);
     decrypted_msg[sizeDecrypted] = '\0';
 
-    USB.println("Length encrypted:");
+    //printing relevant information
+    USB.println();
+    USB.println(F("---- Encyption info ----"));
+    USB.println(F("Plain data"));
+    USB.println(txBuffer);
+    USB.println(F("Encrypted data"));
+    USB.println((char *)encrypted_message);
+    USB.println(F("Length encrypted:"));
     USB.println(bytes,DEC);
-    USB.println("Decrypted message:");
+    USB.println(F("Decrypted message:"));
     USB.println((char *)decrypted_msg);
-    USB.println("Size decrypted:");
+    USB.println(F("Size decrypted:"));
     USB.println(sizeDecrypted,DEC);
-    
-    
+    USB.println(F("-----------------------"));
+    USB.println();
   #endif
   
 
@@ -272,12 +279,18 @@ static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
   memcpy(&xbeeBuffer[2],encrypted_message,sizeof(encrypted_message));
   
   // send XBee packet
-  error = xbee802.send( RX_ADDRESS, xbeeBuffer, sizeof(xbeeBuffer) );   
+  error = xbee802.send( RX_ADDRESS, xbeeBuffer, sizeof(xbeeBuffer) );
+
+  #ifdef DEBUG_MODE
+    USB.println(F("--- xbee TX status ---"));
+  #endif
   
   // check TX flag
   if( error == 0 )
   {
-    USB.println(F("send ok"));
+    #ifdef DEBUG_MODE
+      USB.println(F("send ok"));
+    #endif
     
     // blink green LED
     Utils.blinkGreenLED();
@@ -285,12 +298,19 @@ static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
   }
   else 
   {
-    USB.print(F("send error:"));
-    USB.println(error,DEC);
+    #ifdef DEBUG_MODE
+      USB.print(F("send error:"));
+      USB.println(error,DEC);
+    #endif
     
     // blink red LED
     Utils.blinkRedLED();
   }
+  
+  #ifdef DEBUG_MODE
+    USB.println(F("-----------------------"));
+    USB.println();
+  #endif
 }
 
 static void goToSleepMode(void){
@@ -317,13 +337,23 @@ static void goToSleepMode(void){
   PWR.setSensorPower(SENS_5V, SENS_OFF);
 
   // Setting Waspmote to Low-Power Consumption Mode
-  USB.println(F("entering into sleep mode"));
+  #ifdef DEBUG_MODE
+    USB.println(F("**** Entering in sleep mode ***"));
+  #endif
+  
   PWR.sleep(ALL_OFF);
   
   // After setting Waspmote to power-down, UART is closed, so it
   // is necessary to open it again
   USB.ON();
-  USB.println(F("Waspmote wake up!"));
+  
+  #ifdef DEBUG_MODE
+    USB.println();
+    USB.println(F("Waspmote wake up!"));
+    USB.println();
+    USB.println(F("*******************************"));
+  #endif
+  
   RTC.ON();
   //USB.print(F("Time: "));
   //USB.println(RTC.getTime());
