@@ -216,8 +216,10 @@ static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
 
   char txBuffer[80]="";
   uint8_t encrypted_message[80]; //5 blocks of 16 bytes
+  uint8_t xbeeBuffer [82]; //2 bytes to store the length of the encrypted data + 80 to store the encrypted data
   char tempAux[10] = "";
   char phAux[10] = "";
+  uint16_t bytes;
 
   //initialize buffer
   memset(encrypted_message,0,sizeof(encrypted_message));
@@ -233,6 +235,9 @@ static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
   USB.println(txBuffer);
   USB.println();
 
+  //calculating length of plain text for AES128 encryption
+  bytes = AES.sizeOfBlocks(txBuffer);
+
   //encrypts frame at application layer with AES128
   AES.encrypt(128,KEY_AES128,txBuffer,encrypted_message, ECB, ZEROS);
 
@@ -242,21 +247,32 @@ static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
 
   //in debug mode we check the encrypted msg
   #ifdef DEBUG_MODE
-    char decrypted_msg[80]="";
-    uint16_t bytes = AES.sizeOfBlocks((char *)encrypted_message);
+    uint8_t decrypted_msg[80]="";
     uint16_t sizeDecrypted;
     
-    AES.decrypt(128,KEY_AES128,encrypted_message,bytes, (uint8_t *) decrypted_msg, &sizeDecrypted, ECB, ZEROS);
+    AES.decrypt(128,KEY_AES128,encrypted_message,bytes,decrypted_msg, &sizeDecrypted, ECB, ZEROS);
+    decrypted_msg[sizeDecrypted] = '\0';
 
+    USB.println("Length encrypted:");
+    USB.println(bytes,DEC);
     USB.println("Decrypted message:");
-    USB.println(decrypted_msg);
+    USB.println((char *)decrypted_msg);
     USB.println("Size decrypted:");
     USB.println(sizeDecrypted,DEC);
     
+    
   #endif
   
+
+  //fill xbee buffer to be transmitted
+  //                        2Bytes        80Bytes max
+  //XbeeBuffer fields = |encryptedLength|EncryptedData|
+  xbeeBuffer[0] = (bytes & 0xFF00) >> 8;
+  xbeeBuffer[1] = (bytes & 0x00FF);
+  memcpy(&xbeeBuffer[2],encrypted_message,sizeof(encrypted_message));
+  
   // send XBee packet
-  error = xbee802.send( RX_ADDRESS, encrypted_message, sizeof(encrypted_message) );   
+  error = xbee802.send( RX_ADDRESS, xbeeBuffer, sizeof(xbeeBuffer) );   
   
   // check TX flag
   if( error == 0 )

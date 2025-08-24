@@ -52,7 +52,7 @@ CERT_CA_DIR = "./CAcertificates/"
 LOCALHOST = "192.168.1.44"
 SERVER_MAX_NUMBER_CONNECTIONS = 5
 SERVER_PORT = 5000
-RX_BUFFER_LEN = 8192
+RX_BUFFER_LEN = 480 #this is the size of one fragment
 
 BLOCKCHAIN_OPERATION_COMPLETED = "SUCESS"
 BLOCKCHAIN_OPERATION_FAILED = "FAILURE"
@@ -604,6 +604,7 @@ class MonitoringForIpfsHyperledger(daemon):
                     #check for termination string
                     if plainDataDecode[-3:] == "END" or self.isSocketClosed():
                         break
+                        
                 
                 if isConnectionClosed:#closed
                     self.waitUntilGatewayIsConnected()

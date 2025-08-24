@@ -37,11 +37,9 @@
 #define LEN_ENCODED_BUFFER 480
  
 //frame fields
-#define N_NAME_FIELD 2
-#define N_SEQUENCE_FIELD 3
-#define N_TEMPERATURE_FIELD 4
-#define N_PH_FIELD 5
-#define N_TURBIDITY_FIELD 6
+#define N_TEMPERATURE_FIELD 0
+#define N_PH_FIELD 1
+#define N_TURBIDITY_FIELD 2
 
 //NTP
 #define TIME_ZONE 2 //GMT+2 (daylight season)
@@ -55,8 +53,6 @@ typedef struct{
   char * waterTemperature;
   char * ph;
   char * turbidity;
-  char * name;
-  char * seq;
 }dataField_t;
 
 //function definitions
@@ -92,13 +88,14 @@ void loop()
 { 
   static int receivedMeasures = 0;
   static int posBuf = 0;
-  char tempBuf [90];
+  char tempBuf [90]="";
   dataField_t dataFields;
   uint8_t posTempBuf = 0;
-  char decrypted_message[128];
-  uint16_t sizeDecrypted; 
+  uint8_t decrypted_message[80];
+  uint8_t xbeeBuffer[100];
+  uint16_t sizeDecrypted=0; 
   //uint8_t encrypted_message[80];//5 blocks
-  uint16_t encrypted_length;
+  uint16_t encrypted_length=0;
   
   // receive XBee packet
   error = xbee802.receivePacketTimeout(5000);
@@ -115,18 +112,22 @@ void loop()
     USB.print(F("Length received frame from sensor node: "));  
     USB.println( xbee802._length,DEC);
 
-    //Decrypting received message with AES128
-    //memset(encrypted_message,0,sizeof(encrypted_message));
-    //memcpy(encrypted_message,xbee802._payload,xbee802._length);
-    encrypted_length = AES.sizeOfBlocks((char *) xbee802._payload);
+    //Extracting fields from XBEE frame
+    //two fields:
+    //first and second byte -> nº of encrypted bytes
+    //rest of the bytes -> encrypted bytes
 
-    AES.decrypt(128,KEY_AES128,xbee802._payload,encrypted_length, (uint8_t *) decrypted_message, &sizeDecrypted, ECB, ZEROS);    
+    encrypted_length = ((uint16_t)xbee802._payload[0] << 8 | (uint16_t)xbee802._payload[1]);
+    USB.println("Leght encrypted:");
+    USB.println(encrypted_length,DEC);
+
+    AES.decrypt(128,KEY_AES128,&xbee802._payload[2],encrypted_length,decrypted_message, &sizeDecrypted, ECB, ZEROS);    
     //USB.print(F("decrypted message:"));
     //USB.print((char *) decrypted_message);
        
     //processing received frame
-    dataFields = getDataFields(decrypted_message);
-    memset(tempBuf,0,sizeof(tempBuf));
+    dataFields = getDataFields((char *)decrypted_message);
+    //memset(tempBuf,0,sizeof(tempBuf));
     
     if (receivedMeasures == 0){
       sprintf(tempBuf,"%s %s %s %s %% ",SEND_TELEMETRY_CMD,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
@@ -340,14 +341,14 @@ static uint8_t sendTelemetryToServer(){
         }
 
         //delay to allow the server to process each fragment independently
-        delay(400);
+        delay(1000);
       }
 
       ////////////////////////////////////////////////
       // 3.3. Wait for answer from server
       ////////////////////////////////////////////////
       USB.println(F("Listen to TCP socket:"));
-      error = WIFI_PRO.receive(socket_handle, 30000);
+      error = WIFI_PRO.receive(socket_handle, 60000);
 
       // check answer  
       if (error == 0)
@@ -405,21 +406,26 @@ static dataField_t getDataFields(char * frame){
   char * token;
   int nField = 0;
   dataField_t dataFields;
+
+  USB.println("Analyzing datafields");
+  USB.println(frame);
   
   token = strtok( frame, "#");
 
   while (token != NULL) {
     
-    if (nField == N_NAME_FIELD){
-      dataFields.name = token;
-    }else if (nField == N_SEQUENCE_FIELD){
-      dataFields.seq = token;
-    }else if (nField == N_TEMPERATURE_FIELD){
+    if (nField == N_TEMPERATURE_FIELD){
       dataFields.waterTemperature = token;
+      USB.println("temp");
+      USB.println(dataFields.waterTemperature);
     }else if (nField == N_PH_FIELD){
       dataFields.ph = token;
+      USB.println("ph");
+      USB.println(dataFields.ph);
     }else if (nField == N_TURBIDITY_FIELD){
       dataFields.turbidity = token;
+      USB.println("turbidity");
+      USB.println(dataFields.turbidity);
     }
     
     token = strtok(NULL, "#");
