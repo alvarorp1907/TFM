@@ -11,9 +11,6 @@
 //HW
 #define HW_WIFI_SOCKET SOCKET1
 
-//sleep mode
-#define DELAY "3"
-
 //AES128
 #define KEY_AES128 "Ak976GbNgqyp16bj"
 #define KEY_AES128_SERVER "d09bfpJkrbhr638v"
@@ -26,13 +23,7 @@
 #define SEND_TELEMETRY_CMD "SEND_TELEMETRY"
 
 //rx buffer
-#define N_BYTES_PER_RX_FRAME 95
-#ifdef DEBUG_MODE
-#define N_MEASURES_TO_SERVER 24
-#else
-#define N_MEASURES_TO_SERVER 24
-#endif
-#define LEN_RX_BUFFER N_MEASURES_TO_SERVER*N_BYTES_PER_RX_FRAME
+#define LEN_RX_BUFFER 100
 #define LEN_ENCRYPTED_BUFFER 240
 #define LEN_ENCODED_BUFFER 480
  
@@ -73,9 +64,6 @@ void setup()
   // init XBee 
   xbee802.ON();
 
-  //init WI-FI
-  //WIFI_PRO.ON(HW_WIFI_SOCKET);
-
   //configuration of time synchronitation of RTC
   //through WIFI
   InitsynchronitationTime();
@@ -86,15 +74,11 @@ void setup()
 
 void loop()
 { 
-  static int receivedMeasures = 0;
-  static int posBuf = 0;
   char tempBuf [90]="";
   dataField_t dataFields;
   uint8_t posTempBuf = 0;
   uint8_t decrypted_message[80];
-  uint8_t xbeeBuffer[100];
   uint16_t sizeDecrypted=0; 
-  //uint8_t encrypted_message[80];//5 blocks
   uint16_t encrypted_length=0;
   
   // receive XBee packet
@@ -129,57 +113,33 @@ void loop()
     dataFields = getDataFields((char *)decrypted_message);
     //memset(tempBuf,0,sizeof(tempBuf));
     
-    if (receivedMeasures == 0){
-      sprintf(tempBuf,"%s %s %s %s %% ",SEND_TELEMETRY_CMD,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
-    }else{
-      sprintf(tempBuf,"%s %s %s %% ",dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
-    }
+    sprintf(tempBuf,"%s %s %s %s %% ",SEND_TELEMETRY_CMD,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
     
     posTempBuf = strlen(tempBuf);
     
     if (isRtcSync)
     {
-      if (receivedMeasures != (N_MEASURES_TO_SERVER - 1)){
-        sprintf(&tempBuf[posTempBuf],"TIME:%s \n\r",RTC.getTime());
-      }else{
-        sprintf(&tempBuf[posTempBuf],"TIME:%s END",RTC.getTime());
-      }
+       sprintf(&tempBuf[posTempBuf],"TIME:%s \n\r",RTC.getTime());
     }else{
-      if (receivedMeasures != (N_MEASURES_TO_SERVER - 1)){
-        sprintf(&tempBuf[posTempBuf],"TIME: not sync yet \n\r");
-      }else{
-        sprintf(&tempBuf[posTempBuf],"TIME: not sync yet END");
-      }
+       sprintf(&tempBuf[posTempBuf],"TIME: not sync yet \n\r");
     }
 
-    USB.print(F("Length decoded frame: "));  
+    USB.print(F("Length of the processed measurement: "));  
     USB.println(strlen(tempBuf),DEC);
     
     //stroring in buffer
-    memcpy(&rxBuffer[posBuf], tempBuf, strlen(tempBuf));
-    posBuf = posBuf + strlen(tempBuf);
+    memcpy(&rxBuffer, tempBuf, strlen(tempBuf));
     USB.println(rxBuffer);
-    
-    // incrementing counter of collected measures
-    receivedMeasures = receivedMeasures + 1;
-    USB.println(receivedMeasures);
    
-     //send collected measures to TCP server each N_MEASURES_TO_SERVER measures received
-    if (receivedMeasures == N_MEASURES_TO_SERVER)
-    {
-     
-     receivedMeasures = 0;
+    //send collected measure to TCP server
       
-     //send collected measures to TCP server
-     USB.println(F("Sending pending measures to TCP server!"));
-     USB.print(rxBuffer);
-     sendTelemetryToServer();
+    //send collected measures to TCP server
+    USB.println(F("Sending pending measures to TCP server!"));
+    sendTelemetryToServer();
 
-     //erasing buffer
-     memset(rxBuffer,0,sizeof(rxBuffer));
-     posBuf = 0;
-      
-    }
+    //erasing buffer
+    memset(rxBuffer,0,sizeof(rxBuffer));
+     
   }
 }
 
@@ -193,8 +153,7 @@ static uint8_t sendTelemetryToServer(){
   uint16_t socket_handle = 0;
   uint8_t encrypted_message[LEN_ENCRYPTED_BUFFER];
   char hex_string[LEN_ENCODED_BUFFER];
-  uint8_t nFragments;
-  int lenBuf = strlen(rxBuffer);
+  uint16_t nBytesEncrypted = 0;
   
   //////////////////////////////////////////////////
   // 1. Switch ON
@@ -285,63 +244,42 @@ static uint8_t sendTelemetryToServer(){
       ////////////////////////////////////////////////
       // 3.2. send data
       ////////////////////////////////////////////////
-      //USB.println(F("strlen buffer rx"));
-      //USB.println(strlen(rxBuffer),DEC);
-      //float division = (float)lenBuf/LEN_ENCRYPTED_BUFFER;
-      //USB.println(F("Division:"));
-      //USB.println(division);
-      char tempBuf [LEN_ENCRYPTED_BUFFER];
-      uint16_t  nBytesBlocks = AES.sizeOfBlocks(rxBuffer);
-      float division = (float)nBytesBlocks / LEN_ENCRYPTED_BUFFER;
-      nFragments = ceil(division);
-      USB.println(F("Number of fragments to send:"));
-      USB.println(nFragments,DEC);
-      uint16_t byteCount = 0;
-      uint8_t len=0;
 
-      for(int i=0;i<nFragments;i++){
+      //calculating number of encrypted bytes
+      nBytesEncrypted = AES.sizeOfBlocks(rxBuffer);
 
-        uint16_t remainingBytes = nBytesBlocks - byteCount;
-        len = remainingBytes > LEN_ENCRYPTED_BUFFER ? LEN_ENCRYPTED_BUFFER : remainingBytes;
-
-        //encrypts frame at application layer with AES128
-        memset(encrypted_message,0,LEN_ENCRYPTED_BUFFER);
-        memcpy(tempBuf,&rxBuffer[i*LEN_ENCRYPTED_BUFFER],len);
-        AES.encrypt(128,KEY_AES128_SERVER,tempBuf,encrypted_message, ECB, ZEROS);
-        USB.println("Encrypted data to be sent to TCP server:");
-        //USB.print(encrypted_message);
+      //encrypts frame at application layer with AES128
+      memset(encrypted_message,0,LEN_ENCRYPTED_BUFFER);
+      AES.encrypt(128,KEY_AES128_SERVER,rxBuffer,encrypted_message, ECB, ZEROS);
+      //USB.println("Encrypted data to be sent to TCP server:");
+      //USB.print(encrypted_message);
         
-        //encode the data in HEX
-        memset(hex_string,0,LEN_ENCODED_BUFFER);
+      //encode the data in HEX
+      memset(hex_string,0,LEN_ENCODED_BUFFER);
 
-        USB.println(F("len encrypted:"));
-        USB.println(len,DEC);
+      USB.println(F("len encrypted:"));
+      USB.println(nBytesEncrypted,DEC);
         
-        for (int j=0; j < len; j++) {
-          sprintf(&hex_string[j*2], "%02X", encrypted_message[j]);
-          byteCount++;
-        }
+      for (int j=0; j < nBytesEncrypted; j++) {
+        sprintf(&hex_string[j*2], "%02X", encrypted_message[j]);
+      }
 
-        USB.println(F("strlen hex_string:"));
-        USB.println(hex_string);
-        USB.println(F("len sent:"));
-        USB.println(len*2);
+      USB.println(F("strlen hex_string:"));
+      USB.println(hex_string);
+      USB.println(F("len sent:"));
+      USB.println(nBytesEncrypted*2);
         
-        error = WIFI_PRO.send( socket_handle,(uint8_t*) hex_string,len*2);
+      error = WIFI_PRO.send( socket_handle,(uint8_t*) hex_string,nBytesEncrypted*2);
 
-        // check response
-        if (error == 0)
-        {
-          USB.println(F("3.2. Send data OK"));   
-        }
-        else
-        {
-          USB.println(F("3.2. Error calling 'send' function"));
-          WIFI_PRO.printErrorCode();       
-        }
-
-        //delay to allow the server to process each fragment independently
-        delay(1000);
+      // check response
+      if (error == 0)
+      {
+        USB.println(F("3.2. Send data OK"));   
+      }
+      else
+      {
+        USB.println(F("3.2. Error calling 'send' function"));
+        WIFI_PRO.printErrorCode();       
       }
 
       ////////////////////////////////////////////////
