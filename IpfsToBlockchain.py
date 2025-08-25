@@ -44,15 +44,13 @@ CID_CODE_ERROR = "-1"
 
 #project directory where certs are stored
 PROJECT_DIR = "/home/alvarorp19/scriptsPyTFM/"
-#certificates directories
-CERT_SERVER_DIR = "./serverCertificates+/"
-CERT_CA_DIR = "./CAcertificates/"
 
-#HTTPS server information
+#TCP server information
 LOCALHOST = "192.168.1.44"
 SERVER_MAX_NUMBER_CONNECTIONS = 5
 SERVER_PORT = 5000
-RX_BUFFER_LEN = 480 #this is the size of one fragment
+RX_BUFFER_LEN = 480
+WAITING_TIMEOUT = 10
 
 BLOCKCHAIN_OPERATION_COMPLETED = "SUCESS"
 BLOCKCHAIN_OPERATION_FAILED = "FAILURE"
@@ -401,14 +399,11 @@ class HandlerServerTCP:
         
 
     ###static defines and variables###
-    
-    GATEWAY_STORE_CID_EVENT = "STORE_CID"
     GATEWAY_SEND_TELEMTRY_EVENT = "SEND_TELEMETRY"
-    GATEWAY_SEND_TELEMTRY_EVENT_END_STR = "END"
     
     #getaway event dictionary:  
     #key = command name | 1st value: command pattern , 2nd value : associated function pointer
-    gatewayEventDict = {GATEWAY_SEND_TELEMTRY_EVENT : [fr"^{GATEWAY_SEND_TELEMTRY_EVENT}\s+(.*)\s{GATEWAY_SEND_TELEMTRY_EVENT_END_STR}$",uploadTelemetryBlockchainAndIPFS]}
+    gatewayEventDict = {GATEWAY_SEND_TELEMTRY_EVENT : [fr"^{GATEWAY_SEND_TELEMTRY_EVENT}\s+(.*)$",uploadTelemetryBlockchainAndIPFS]}
     
     
     
@@ -513,6 +508,8 @@ class MonitoringForIpfsHyperledger(daemon):
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #setting options
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        #setting timeout
+        #self.server.settimeout(WAITING_TIMEOUT)
         #binding IP with port
         self.server.bind((LOCALHOST, SERVER_PORT))
         #waiting for connection
@@ -579,39 +576,35 @@ class MonitoringForIpfsHyperledger(daemon):
         
         while True:
             try:
-                plainDataDecode = ""
-                #reception loop
-                while True:
-                    #wait until data arrives
-                    rawData = self.gateway.recv(RX_BUFFER_LEN)
-                    
-                    #check if connection is close
-                    if self.isSocketClosed():
-                        isConnectionClosed = True
-                        break
-                    
-                    #process fragment
-                    decodedData = rawData.decode('ascii') 
-                    encryptedbytes = bytes.fromhex(decodedData)
-                    print(decodedData)
-                    print(len(decodedData))
+                #wait until data arrives or timeout expires (the timeout is set to 10 seconds)
+                rawData = self.gateway.recv(RX_BUFFER_LEN)
                 
-                    #decrypt message received
-                    auxPlainData = self.decryptMessageAES128(encryptedbytes)
-                    print(f"Plain text -> {auxPlainData}")
-                    plainDataDecode += auxPlainData.decode('utf-8')
+                #process fragment
+                decodedData = rawData.decode('ascii')
+                encryptedLen = len(decodedData)
+                encryptedbytes = bytes.fromhex(decodedData)
+                
+                #decrypt message received
+                plainData = self.decryptMessageAES128(encryptedbytes)
+                
+                if encryptedLen > 0:
+                    print(f"Encrypted data -> {decodedData}")
+                    print(f"Encrypted length -> {encryptedLen}")
+                    print(f"Plain text -> {plainData}")
                     
-                    #check for termination string
-                    if plainDataDecode[-3:] == "END" or self.isSocketClosed():
-                        break
-                        
+                #check if connection is close
+                if self.isSocketClosed():
+                    isConnectionClosed = True 
+
+                #toDo: check if the time windows is over to send the measures
+                
                 
                 if isConnectionClosed:#closed
                     self.waitUntilGatewayIsConnected()
                     isConnectionClosed = False
                 else:#open
                     #processing received data from gateway
-                    responsePayload = self.handlerObj.processRequest(plainDataDecode)
+                    responsePayload = self.handlerObj.processRequest(plainData.decode('utf-8'))
                     statusCode = ""
                     #sending a response to client
                     if responsePayload == BLOCKCHAIN_OPERATION_COMPLETED:
@@ -621,6 +614,7 @@ class MonitoringForIpfsHyperledger(daemon):
                     
                     #sending response
                     self.gateway.sendall(statusCode.encode('utf-8'))
+                    
             except ConnectionResetError as e:
                 print(f"[EXCEPTION]: {e}")
                 #waiting for a new connection in case that an exception
