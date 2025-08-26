@@ -222,6 +222,8 @@ static uint8_t sendTelemetryToServer(){
     ////////////////////////////////////////////////
     error = WIFI_PRO.setTCPclient( SERVER_IP, TCP_REMOTE_PORT, TCP_LOCAL_PORT);
 
+    //ToDo: try 5 attempts in case an error occurs (timeout error)
+    
     // check response
     if (error == 0)
     {

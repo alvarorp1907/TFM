@@ -24,7 +24,7 @@
 #define SENSOR_PH_ID 71
 #define SENSOR_TURBIDITY_ID 72
 #ifdef DEBUG_MODE
-#define DELAY "50" //s
+#define DELAY "40" //s
 #else
 #define DELAY "60" //1h
 #endif
