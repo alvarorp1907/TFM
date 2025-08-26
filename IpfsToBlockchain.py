@@ -49,8 +49,9 @@ PROJECT_DIR = "/home/alvarorp19/scriptsPyTFM/"
 LOCALHOST = "192.168.1.44"
 SERVER_MAX_NUMBER_CONNECTIONS = 5
 SERVER_PORT = 5000
-RX_BUFFER_LEN = 480
-WAITING_TIMEOUT = 10
+RX_BUFFER_LEN = 480 #bytes
+WAITING_TIMEOUT = 0.1 #seconds
+WINDOW_TIME = 200 #seconds
 
 BLOCKCHAIN_OPERATION_COMPLETED = "SUCESS"
 BLOCKCHAIN_OPERATION_FAILED = "FAILURE"
@@ -363,9 +364,29 @@ class HandlerServerTCP:
         return retStatus, fileCid
     
     
-    
-    @staticmethod
-    def uploadTelemetryBlockchainAndIPFS(cmdParam):
+    def __init__(self):
+        """
+        Constructor class
+        """
+        self.telemetry = ""
+        
+        
+        
+    def cleanTelemetry(self):
+        """
+        Function to clean the collected telemetry.
+        
+        Args:
+            None
+        
+        Return:
+            None.
+        """
+        self.telemetry = ""
+        
+        
+        
+    def uploadTelemetryBlockchainAndIPFS(self):
         """
         Function to upload the telemetry received from the client.
         
@@ -375,13 +396,17 @@ class HandlerServerTCP:
         Return:
             Response message to be sent to the client as payload.
         """
-        telemetryToBeStored = cmdParam[0]
+        telemetryToBeStored = self.telemetry
         print(f"TELEMETRY -> {telemetryToBeStored}")
         operationStatus = BLOCKCHAIN_OPERATION_FAILED
         unixTime = int(time.time())
         fileName = f"telemetry-{unixTime}.txt"
         cid = ""
         statusIpfs = False
+        
+        if self.telemetry == "":
+            print("RX buffer is void, nothing to store at IFPS and Blockchain")
+            return operationStatus
         
         #create a temporal file to store telemetry
         with open(fileName, 'w') as file:
@@ -402,8 +427,8 @@ class HandlerServerTCP:
     GATEWAY_SEND_TELEMTRY_EVENT = "SEND_TELEMETRY"
     
     #getaway event dictionary:  
-    #key = command name | 1st value: command pattern , 2nd value : associated function pointer
-    gatewayEventDict = {GATEWAY_SEND_TELEMTRY_EVENT : [fr"^{GATEWAY_SEND_TELEMTRY_EVENT}\s+(.*)$",uploadTelemetryBlockchainAndIPFS]}
+    #key = command name | value: command pattern
+    gatewayEventDict = {GATEWAY_SEND_TELEMTRY_EVENT : fr"^{GATEWAY_SEND_TELEMTRY_EVENT}\s+(.*)$"}
     
     
     
@@ -430,12 +455,12 @@ class HandlerServerTCP:
         for cmdName, value in HandlerServerTCP.gatewayEventDict.items():
             if cmdNameRcv == cmdName:
                 #check received msg structure
-                pattern = value[0]
+                pattern = value
                 match = re.search(pattern,payload, re.DOTALL)
                 if match:
                     cmdParamsTuple = match.groups()
-                    ptrFunction = value[1]
-                    response = ptrFunction(cmdParamsTuple)
+                    self.telemetry += cmdParamsTuple[0]
+                    response = BLOCKCHAIN_OPERATION_COMPLETED
                     break
                 else:
                     print(f"command sent by gateway doesn't match the pattern for the command '{cmdName}'")
@@ -458,6 +483,7 @@ class MonitoringForIpfsHyperledger(daemon):
         self.server = None #TCP server socket 
         self.gateway = None #TCP gateway socket
         self.gatewayConfig = None
+        self.windowStartTimestamp = datetime.datetime.now().timestamp()
         
         self.handlerObj = HandlerServerTCP()
         
@@ -503,13 +529,14 @@ class MonitoringForIpfsHyperledger(daemon):
             This function reject all clients except the target gateway device. 
         """
         gatewayIsConnected = False
+        firstIteration = True
         
         #creating a TCP socket
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #setting options
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         #setting timeout
-        #self.server.settimeout(WAITING_TIMEOUT)
+        self.server.settimeout(WAITING_TIMEOUT)
         #binding IP with port
         self.server.bind((LOCALHOST, SERVER_PORT))
         #waiting for connection
@@ -517,10 +544,21 @@ class MonitoringForIpfsHyperledger(daemon):
     
         while(not gatewayIsConnected):
             gatewayIp =  self.gatewayConfig["ip"]
-            print("Waiting until gateway is connected...")
-            #program is blocked here until a connection is established
-            clientSocket, clientAddress = self.server.accept()
-            clientIp , clientPort = clientAddress
+            if firstIteration:
+                print("Waiting until gateway is connected...")
+                firstIteration = False
+            try:
+                #program is blocked here until a connection is established or the timeout expires
+                clientSocket, clientAddress = self.server.accept()
+                clientIp , clientPort = clientAddress
+            except TimeoutError as e:
+                #ToDo: manage temporal window of 16 minutes to send the collected telemetry to IPFS and blockchain
+                status = self.updateTemporalWindow()
+                if status:
+                    self.handlerObj.uploadTelemetryBlockchainAndIPFS()
+                    self.handlerObj.cleanTelemetry()
+                continue
+            
             #checking client
             print(f"Client ({clientIp}:{clientPort}) trying to establish connection")
             if clientIp == gatewayIp:
@@ -535,6 +573,32 @@ class MonitoringForIpfsHyperledger(daemon):
         #can stop listening server port
         print("Connection established with gateway!")
         self.server.close()
+    
+    
+    def updateTemporalWindow(self):
+        """
+        Function tot manage the temporal window that handles the storage of the
+        received telemetry from the gateway
+        
+        Args:
+            None
+            
+        Return:
+            1 if the window time has finished, otherwise 0
+        """
+        ret = 0
+        
+        actualTimestamp = datetime.datetime.now().timestamp()
+        diff = actualTimestamp - self.windowStartTimestamp
+        
+        if diff >= WINDOW_TIME:
+            print(f"diff Window -> {diff}")
+            self.windowStartTimestamp = actualTimestamp
+            ret = 1
+        
+        return ret
+        
+        
     
     
     
