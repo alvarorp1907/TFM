@@ -130,8 +130,6 @@ void loop()
     //stroring in buffer
     memcpy(&rxBuffer, tempBuf, strlen(tempBuf));
     USB.println(rxBuffer);
-   
-    //send collected measure to TCP server
       
     //send collected measures to TCP server
     USB.println(F("Sending pending measures to TCP server!"));
@@ -220,25 +218,39 @@ static uint8_t sendTelemetryToServer(){
     //////////////////////////////////////////////// 
     // 3.1. Open TCP socket
     ////////////////////////////////////////////////
-    error = WIFI_PRO.setTCPclient( SERVER_IP, TCP_REMOTE_PORT, TCP_LOCAL_PORT);
+    uint8_t attempts = 0;
 
-    //ToDo: try 5 attempts in case an error occurs (timeout error)
+    //try 6 attempts in case an error occurs (timeout error)
     
-    // check response
-    if (error == 0)
-    {
-      // get socket handle (from 0 to 9)
-      socket_handle = WIFI_PRO._socket_handle;
+    do{
+
+      USB.print(F("Trying to open a TCP socket (attempt nº "));
+      USB.println(attempts,DEC);
       
-      USB.print(F("3.1. Open TCP socket OK in handle: "));
-      USB.println(socket_handle, DEC);
-    }
-    else
-    {
-      USB.println(F("3.1. Error calling 'setTCPclient' function"));
-      WIFI_PRO.printErrorCode();
-      status = false;   
-    }
+      error = WIFI_PRO.setTCPclient( SERVER_IP, TCP_REMOTE_PORT, TCP_LOCAL_PORT);
+    
+      // check response
+      if (error == 0)
+      {
+        // get socket handle (from 0 to 9)
+        socket_handle = WIFI_PRO._socket_handle;
+      
+        USB.print(F("3.1. Open TCP socket OK in handle: "));
+        USB.println(socket_handle, DEC);
+        status = true;
+        break;
+      }
+      else
+      {
+        USB.println(F("3.1. Error calling 'setTCPclient' function"));
+        WIFI_PRO.printErrorCode();
+        status = false;  
+        delay(50);
+      }
+
+      attempts++;
+      
+    }while(attempts < 6);
 
     if (status == true)
     {
