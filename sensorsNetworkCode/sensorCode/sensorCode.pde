@@ -35,8 +35,8 @@
 //functions definition
 static float getPh(void);
 static float getTemperature(void);
-static int getTurbidity(void);
-static void sendMeasuresToGateway(float temperature, float ph, int turbidity);
+static float getTurbidity(void);
+static void sendMeasuresToGateway(float temperature, float ph, float turbidity);
 static void goToSleepMode(void);
 
 // Destination MAC address
@@ -55,6 +55,7 @@ void setup()
 {
   //init 5V pin
   PWR.setSensorPower(SENS_5V, SENS_ON);
+  PWR.setSensorPower(SENS_3V3, SENS_ON);
   // init USB port
   USB.ON();
   
@@ -69,8 +70,7 @@ void setup()
 
 void loop()
 {
-  static float temperature, ph;
-  static int turbidity;
+  static float temperature, ph, turbidity;
 
   #ifdef DEBUG_MODE
     unsigned long startTime;
@@ -210,24 +210,32 @@ static float getTemperature(void){
   return temperature;
 }
 
-static int getTurbidity(void){
-  //ToDo: to complete
+static float getTurbidity(void){
+  int analog;
+  float percentage;
+
+  //turbidity level in percentage
+  analog = analogRead(ANALOG6);
+  percentage =  100 - ((float)(analog/1023.0f)*100);
 
   #ifdef DEBUG_MODE
-    USB.print(F("Turbidity mock measure: "));
-    USB.println("20%");
+    USB.print(F("Turbidity measurement : "));
+    USB.print(percentage);
+    USB.println(F("%"));
+    
   #endif
   
-  return 20;
+  return percentage;
 }
 
-static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
+static void sendMeasuresToGateway(float temperature, float ph, float turbidity){
 
   char txBuffer[80]="";
   uint8_t encrypted_message[80]; //5 blocks of 16 bytes
   uint8_t xbeeBuffer [82]; //2 bytes to store the length of the encrypted data + 80 to store the encrypted data
   char tempAux[10] = "";
   char phAux[10] = "";
+  char turbAux[10] = "";
   uint16_t bytes;
 
   //initialize buffer
@@ -236,7 +244,8 @@ static void sendMeasuresToGateway(float temperature, float ph, int turbidity){
   //fill tx buffer with the collected data
   dtostrf(temperature,0, 2, tempAux);// parameter width is o to avoid extra spaces
   dtostrf(ph,0,2, phAux);// parameter width is o to avoid extra spaces
-  sprintf(txBuffer,"#Temp:%s#pH:%s#turb:%d#",tempAux,phAux,turbidity);
+  dtostrf(turbidity,0,2, turbAux);// parameter width is o to avoid extra spaces
+  sprintf(txBuffer,"#Temp:%s#pH:%s#turb:%s#",tempAux,phAux,turbAux);
 
   //calculating length of plain text for AES128 encryption
   bytes = AES.sizeOfBlocks(txBuffer);
@@ -335,6 +344,7 @@ static void goToSleepMode(void){
 
   //Power off modules 
   PWR.setSensorPower(SENS_5V, SENS_OFF);
+  PWR.setSensorPower(SENS_3V3, SENS_OFF);
 
   // Setting Waspmote to Low-Power Consumption Mode
   #ifdef DEBUG_MODE
@@ -360,6 +370,7 @@ static void goToSleepMode(void){
 
   //power on modules
   PWR.setSensorPower(SENS_5V, SENS_ON);
+  PWR.setSensorPower(SENS_3V3, SENS_ON);
   delay(1000);
 
   // init XBee
