@@ -113,7 +113,7 @@ void loop()
     dataFields = getDataFields((char *)decrypted_message);
     //memset(tempBuf,0,sizeof(tempBuf));
     
-    sprintf(tempBuf,"%s %s %s %s %% ",SEND_TELEMETRY_CMD,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
+    sprintf(tempBuf,"%s %s C %s %s %% ",SEND_TELEMETRY_CMD,dataFields.waterTemperature,dataFields.ph,dataFields.turbidity);
     
     posTempBuf = strlen(tempBuf);
     
