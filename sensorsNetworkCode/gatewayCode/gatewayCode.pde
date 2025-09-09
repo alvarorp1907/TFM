@@ -102,7 +102,7 @@ void loop()
     //rest of the bytes -> encrypted bytes
 
     encrypted_length = ((uint16_t)xbee802._payload[0] << 8 | (uint16_t)xbee802._payload[1]);
-    USB.println("Leght encrypted:");
+    USB.print("Leght encrypted:");
     USB.println(encrypted_length,DEC);
 
     AES.decrypt(128,KEY_AES128,&xbee802._payload[2],encrypted_length,decrypted_message, &sizeDecrypted, ECB, ZEROS);    
@@ -123,13 +123,14 @@ void loop()
     }else{
        sprintf(&tempBuf[posTempBuf],"TIME: not sync yet \n\r");
     }
-
-    USB.print(F("Length of the processed measurement: "));  
-    USB.println(strlen(tempBuf),DEC);
     
     //stroring in buffer
     memcpy(&rxBuffer, tempBuf, strlen(tempBuf));
+    USB.print(F("Processed measurement: "));
     USB.println(rxBuffer);
+    USB.print(F("Length of the processed measurement: "));  
+    USB.print(strlen(tempBuf),DEC);
+    USB.println(F(" bytes"));
       
     //send collected measures to TCP server
     USB.println(F("Sending pending measures to TCP server!"));
@@ -359,8 +360,8 @@ static dataField_t getDataFields(char * frame){
   int nField = 0;
   dataField_t dataFields;
 
-  USB.println("Analyzing datafields");
-  USB.println(frame);
+  //USB.println("Analyzing datafields");
+  //USB.println(frame);
   
   token = strtok( frame, "#");
 
@@ -368,16 +369,16 @@ static dataField_t getDataFields(char * frame){
     
     if (nField == N_TEMPERATURE_FIELD){
       dataFields.waterTemperature = token;
-      USB.println("temp");
-      USB.println(dataFields.waterTemperature);
+      //USB.println("temp");
+      //USB.println(dataFields.waterTemperature);
     }else if (nField == N_PH_FIELD){
       dataFields.ph = token;
-      USB.println("ph");
-      USB.println(dataFields.ph);
+      //USB.println("ph");
+      //USB.println(dataFields.ph);
     }else if (nField == N_TURBIDITY_FIELD){
       dataFields.turbidity = token;
-      USB.println("turbidity");
-      USB.println(dataFields.turbidity);
+      //USB.println("turbidity");
+      //USB.println(dataFields.turbidity);
     }
     
     token = strtok(NULL, "#");

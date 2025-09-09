@@ -64,7 +64,11 @@ void setup()
   
   // init XBee
   xbee802.ON();
-  
+
+  #ifdef DEBUG_MODE
+    // Setting time [yy:mm:dd:dow:hh:mm:ss]
+    RTC.setTime("25:09:06:07:12:33:00");
+  #endif
 }
 
 
@@ -254,30 +258,30 @@ static void sendMeasuresToGateway(float temperature, float ph, float turbidity){
   AES.encrypt(128,KEY_AES128,txBuffer,encrypted_message, ECB, ZEROS);
 
   //in debug mode we check the encrypted msg
-  #ifdef DEBUG_MODE
-    uint8_t decrypted_msg[80]="";
-    uint16_t sizeDecrypted;
-
-    //decrypting message to check encryption
-    AES.decrypt(128,KEY_AES128,encrypted_message,bytes,decrypted_msg, &sizeDecrypted, ECB, ZEROS);
-    decrypted_msg[sizeDecrypted] = '\0';
-
-    //printing relevant information
-    USB.println();
-    USB.println(F("---- Encyption info ----"));
-    USB.println(F("Plain data"));
-    USB.println(txBuffer);
-    USB.println(F("Encrypted data"));
-    USB.println((char *)encrypted_message);
-    USB.println(F("Length encrypted:"));
-    USB.println(bytes,DEC);
-    USB.println(F("Decrypted message:"));
-    USB.println((char *)decrypted_msg);
-    USB.println(F("Size decrypted:"));
-    USB.println(sizeDecrypted,DEC);
-    USB.println(F("-----------------------"));
-    USB.println();
-  #endif
+//  #ifdef DEBUG_MODE
+//    uint8_t decrypted_msg[80]="";
+//    uint16_t sizeDecrypted;
+//
+//    //decrypting message to check encryption
+//    AES.decrypt(128,KEY_AES128,encrypted_message,bytes,decrypted_msg, &sizeDecrypted, ECB, ZEROS);
+//    decrypted_msg[sizeDecrypted] = '\0';
+//
+//    //printing relevant information
+//    USB.println();
+//    USB.println(F("---- Encyption info ----"));
+//    USB.println(F("Plain data"));
+//    USB.println(txBuffer);
+//    USB.println(F("Encrypted data"));
+//    USB.println((char *)encrypted_message);
+//    USB.println(F("Length encrypted:"));
+//    USB.println(bytes,DEC);
+//    USB.println(F("Decrypted message:"));
+//    USB.println((char *)decrypted_msg);
+//    USB.println(F("Size decrypted:"));
+//    USB.println(sizeDecrypted,DEC);
+//    USB.println(F("-----------------------"));
+//    USB.println();
+//  #endif
   
 
   //fill xbee buffer to be transmitted
@@ -349,6 +353,17 @@ static void goToSleepMode(void){
   // Setting Waspmote to Low-Power Consumption Mode
   #ifdef DEBUG_MODE
     USB.println(F("**** Entering in sleep mode ***"));
+    USB.print(F("The waspmote will exit from sleep mode in "));
+    USB.print(DELAY);
+    USB.println(F(" seconds"));
+
+    //get RTC time
+    char * startTime;
+    startTime = RTC.getTime();
+    USB.print(F("Time when waspmote enter in sleep mode: "));
+    USB.print(startTime);
+    USB.println();
+    
   #endif
   
   PWR.sleep(ALL_OFF);
@@ -358,8 +373,12 @@ static void goToSleepMode(void){
   USB.ON();
   
   #ifdef DEBUG_MODE
+    char * FinishTime;
+    FinishTime = RTC.getTime();
     USB.println();
     USB.println(F("Waspmote wake up!"));
+    USB.print(F("Time when waspmote exited from sleep mode: "));
+    USB.print(FinishTime);
     USB.println();
     USB.println(F("*******************************"));
   #endif
