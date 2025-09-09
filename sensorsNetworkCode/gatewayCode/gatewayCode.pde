@@ -225,7 +225,7 @@ static uint8_t sendTelemetryToServer(){
     
     do{
 
-      USB.print(F("Trying to open a TCP socket (attempt nº "));
+      USB.print(F("Trying to open a TCP socket (attempt number "));
       USB.println(attempts,DEC);
       
       error = WIFI_PRO.setTCPclient( SERVER_IP, TCP_REMOTE_PORT, TCP_LOCAL_PORT);
@@ -360,7 +360,7 @@ static dataField_t getDataFields(char * frame){
   int nField = 0;
   dataField_t dataFields;
 
-  //USB.println("Analyzing datafields");
+  //USB.print("Processing datafields of this frame: ");
   //USB.println(frame);
   
   token = strtok( frame, "#");
@@ -369,15 +369,12 @@ static dataField_t getDataFields(char * frame){
     
     if (nField == N_TEMPERATURE_FIELD){
       dataFields.waterTemperature = token;
-      //USB.println("temp");
       //USB.println(dataFields.waterTemperature);
     }else if (nField == N_PH_FIELD){
       dataFields.ph = token;
-      //USB.println("ph");
       //USB.println(dataFields.ph);
     }else if (nField == N_TURBIDITY_FIELD){
       dataFields.turbidity = token;
-      //USB.println("turbidity");
       //USB.println(dataFields.turbidity);
     }
     
